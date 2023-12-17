@@ -1,0 +1,11 @@
+*.out
+*.cmo
+*.cmi
+*.class
+*.exec
+*.cmx
+*.a
+*.o
+*.exe
+*.d
+.metadata/

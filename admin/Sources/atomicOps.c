@@ -33,7 +33,7 @@ void* acessListMtx(pthread_mutex_t * mtx,DListW* list,void* value,u_int64_t inde
 	}
 	break;
 	case 2:
-	if(list->currSize&&index>=0&&index<list->currSize){
+	if(list->currSize&&index<list->currSize){
 	result=getElemAtIndex(list,index);
 	}
 	break;

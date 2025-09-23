@@ -1,7 +1,7 @@
 #include "Includes/preprocessor.h"
 static const char* ping= "gimmemore!";
 
-static int alive=1;
+static u_int64_t alive=1;
 u_int16_t dataSize;
 #define MAXNUMBEROFTRIES 10
 
@@ -29,7 +29,7 @@ static pthread_t errPrinter;
 char* outbuff=NULL;
 char* errbuff=NULL;
 
-int goPlease=0; 
+u_int64_t goPlease=0; 
 int client_socket,lifeline_socket, output_socket,err_socket;
 static struct sockaddr_in server_address;
 
@@ -52,12 +52,12 @@ static void sigint_handler(int signal){
 	close(output_socket);
 	close(err_socket);
 	printf("cliente a fechar!!!\n");
-	exit(-1);
+	exit(-1+signal*0);
 
 }
 static void sigpipe_handler(int signal){
 
-	raise(SIGINT);
+	raise(SIGINT+0*signal);
 	
 }
 static int64_t receiveServerOutput(int socket,char buff[],u_int64_t size,int secwait,int usecwait){
@@ -78,7 +78,7 @@ static int64_t receiveServerOutput(int socket,char buff[],u_int64_t size,int sec
 static void* getOutput(void* args){
 	outbuff=malloc(dataSize);
 	memset(outbuff,0,dataSize);
-	char buff[strlen(ping)];
+	//char buff[strlen(ping)];
 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 	int numread=1;
 	while((numread=receiveServerOutput(output_socket,outbuff,dataSize,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
@@ -87,7 +87,7 @@ static void* getOutput(void* args){
 		memset(outbuff,0,dataSize);
 	}
 	}
-	
+	return args;
 
 }
 static void* getErr(void* args){
@@ -95,7 +95,7 @@ static void* getErr(void* args){
 	memset(errbuff,0,dataSize);
 	acessVarMtx(&varMtx,&goPlease,1,0);
 	pthread_cond_signal(&readyCond);
-       	char buff[strlen(ping)];
+       	//char buff[strlen(ping)];
 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 	int numread=1;
 	while((numread=receiveServerOutput(err_socket,errbuff,dataSize,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
@@ -106,7 +106,7 @@ static void* getErr(void* args){
 	}
 	
 	}
-	
+	return args;
 
 }
 static void initClient(int port, char* addr){
@@ -211,7 +211,7 @@ static void* areYouStillThere(void* args){
 		memset(buff,0,pingLength);
 
         }
-
+	return args;
 }
 
 

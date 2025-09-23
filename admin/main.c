@@ -1,7 +1,7 @@
 #include "Includes/preprocessor.h"
 static const char* ping= "gimmemore!";
 
-static int alive=1;
+static u_int64_t alive=1;
 #define MAXNUMBEROFTRIES 10
 
 #define MAXTIMEOUTSECS 1
@@ -27,7 +27,7 @@ static pthread_t connectionChecker;
 static pthread_t outputWritter;
 static pthread_t errWritter;
 int outpipe[2],errpipe[2];
-int server_socket,client_socket,output_socket,lifeline_socket,err_socket;
+int32_t server_socket,client_socket,output_socket,lifeline_socket,err_socket;
 char line[LINESIZE]={0};
 char  outbuff[DATASIZE]={0};
 char  errbuff[DATASIZE]={0};

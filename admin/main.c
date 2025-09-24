@@ -1,4 +1,6 @@
 #include "Includes/preprocessor.h"
+socklen_t socklenvar[2]= {sizeof(struct sockaddr),sizeof(struct sockaddr_in)};
+
 static const char* ping= "gimmemore!";
 
 static u_int64_t alive=1;
@@ -22,20 +24,61 @@ static u_int64_t alive=1;
 #define DATASIZE 1024
 
 static pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_t connectionChecker;
 static pthread_t outputWritter;
 static pthread_t errWritter;
-int outpipe[2],errpipe[2];
+int outpipe[2];
+int errpipe[2];
+int inpipe[2];
 int32_t server_socket,client_socket,output_socket,lifeline_socket,err_socket;
+
 char line[LINESIZE]={0};
 char  outbuff[DATASIZE]={0};
 char  errbuff[DATASIZE]={0};
 struct sockaddr_in server_address;
+
+static void print_addr_aux(char* prompt,struct sockaddr_in* addr){
+         printf("%s\nEndereço: \n%s Porta: %u\n",prompt,inet_ntoa(addr->sin_addr),ntohs(addr->sin_port));
+
+}
+
+static void print_sock_addr(int socket){
+
+        struct sockaddr_in addr={0};
+
+        getsockname(socket,(struct sockaddr*)(&addr),&socklenvar[0]);
+
+        print_addr_aux("O endereço desta socket é:\n",&addr);
+
+}
+static void init_addr(struct sockaddr_in* addr, char* hostname_str,uint16_t port){
+
+         addr->sin_family=AF_INET;
+        struct addrinfo *addr_info_struct=NULL;
+        int error=0;
+         if((error=getaddrinfo(hostname_str, NULL, NULL, &addr_info_struct))){
+                printf("Erro a obter address a partir de hostname!!\nErro: %s\n",gai_strerror(error));
+                if(addr_info_struct){
+                        freeaddrinfo(addr_info_struct);
+                }
+        }
+
+        memcpy(addr,(struct sockaddr_in*)addr_info_struct->ai_addr,sizeof(struct sockaddr_in));
+
+        addr->sin_port= htons(port);
+
+        print_addr_aux("ip address: ",addr);
+
+        if(addr_info_struct){
+                freeaddrinfo(addr_info_struct);
+        }
+}
+
 	
 static void sigint_handler(int signal){
 
-        acessVarMtx(&varMtx,&alive,0,0);
+        printf("sigint was called in server!!\n");
+	acessVarMtx(&varMtx,&alive,0,0);
         pthread_join(connectionChecker,NULL);
 	pthread_join(outputWritter,NULL);
 	pthread_join(errWritter,NULL);
@@ -48,30 +91,73 @@ static void sigint_handler(int signal){
 	close(outpipe[1]);
 	close(errpipe[0]);
 	close(errpipe[1]);
+	close(inpipe[0]);
+	close(inpipe[1]);
 	fflush(stdout);
 	fflush(stderr);
+	close(0);
 	close(1);
 	close(2);
-	exit(-1);
+	exit(-1+signal*0);
 }
 
 static void sigpipe_handler(int signal){
 
-	raise(SIGINT);
+	raise(SIGINT+signal*0);
 }
-
 
 static void initpipes(void){
 
-if(pipe(outpipe)){
 
+if(pipe(outpipe)){
 perror("Erro a criar pipe de stdout!!!\n");
 raise(SIGINT);
 }
 dup2(outpipe[1],1);
+
 long flags=fcntl(outpipe[0],F_GETFL);
+if(flags<0){
+
+perror("Erro a criar pipe de stdout!!!\nFlags were not retrieved\n");
+raise(SIGINT);
+
+}
+
 flags |=O_NONBLOCK;
 fcntl(outpipe[0],F_SETFL,flags);
+
+if(flags<0){
+
+perror("Erro a criar pipe de stdout!!!\nFlags were not set!!!!\n");
+raise(SIGINT);
+
+}
+
+
+if(pipe(inpipe)){
+perror("Erro a criar pipe de stdout!!!\n");
+raise(SIGINT);
+}
+dup2(inpipe[1],0);
+flags=fcntl(inpipe[0],F_GETFL);
+if(flags<0){
+
+perror("Erro a criar pipe de stdout!!!\nFlags were not retrieved\n");
+raise(SIGINT);
+
+}
+
+
+flags |=O_NONBLOCK;
+fcntl(inpipe[0],F_SETFL,flags);
+
+if(flags<0){
+
+perror("Erro a criar pipe de stdout!!!\nFlags were not set!!!!\n");
+raise(SIGINT);
+
+}
+
 
 if(pipe(errpipe)){
 
@@ -82,6 +168,7 @@ dup2(errpipe[1],2);
 flags=fcntl(errpipe[0],F_GETFL);
 flags |=O_NONBLOCK;
 fcntl(errpipe[0],F_SETFL,flags);
+
 
 }
 static void acceptConnection(int* socket){
@@ -104,24 +191,34 @@ static void acceptConnection(int* socket){
 	printf("Coneccao de %s!!!!!!\n",inet_ntoa(server_address.sin_addr));
 	
 }
-static void initServer(int port){
+static void initServer(char* address,int port){
 
 
 	
-	server_socket= socket(AF_INET,SOCK_STREAM,0);
+	server_socket= socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
 	if(server_socket==-1){
+		raise(SIGINT);
+	}
+	int ptr=1;
+	struct linger the_linger={0,30};
+        if(setsockopt(server_socket,SOL_SOCKET,SO_REUSEADDR,(char*)&ptr,sizeof(ptr))){
+		perror("Erro a meter SO_REUSEADDR  na socket (setsockopt)\n");
+		raise(SIGINT);
+	}
+	if(setsockopt(server_socket,SOL_SOCKET,SO_LINGER,(char*)&the_linger,sizeof(struct linger))){
+		perror("Erro a meter SO_LINGER na socket (setsockopt)\n");
 		raise(SIGINT);
 	}
 	signal(SIGINT,sigint_handler);
 	signal(SIGPIPE,sigpipe_handler);
 	fcntl(server_socket,F_SETFL,O_NONBLOCK);
-	server_address.sin_family=AF_INET;
-	server_address.sin_port= htons(port);
-	server_address.sin_addr.s_addr = INADDR_ANY;
-	socklen_t len;
 	
-	bind(server_socket,(struct sockaddr*) &server_address,sizeof(server_address));
+	init_addr(&server_address,address,port);
+	if(bind(server_socket,(struct sockaddr*) &server_address,sizeof(server_address))){
 
+		perror("Nao foi possivel dar bind!!!\n");
+		raise(SIGINT);
+	}
         listen(server_socket,3);
 
 }
@@ -153,21 +250,6 @@ static int64_t timedRead(int fd,char buff[],u_int64_t size,int secwait,int usecw
                 }
                 return -1;
 }
-
-static int makeargv(char *s, char *argv[ARGVMAX]) {
-    int ntokens = 0;
-
-    if (s == NULL || argv == NULL || ARGVMAX == 0)
-        return -1;
-    argv[ntokens] = strtok(s, " \t\n");
-    while ((argv[ntokens] != NULL) && (ntokens < ARGVMAX)) {
-        ntokens++;
-        argv[ntokens] = strtok(NULL, " \t\n");
-    }
-    argv[ntokens] = NULL; // it must terminate with NULL
-    return ntokens;
-}
-
 static void* areYouStillThere(void* args){
 	
         int pingLength=strlen(ping);
@@ -180,14 +262,15 @@ static void* areYouStillThere(void* args){
 		send(lifeline_socket,ping,strlen(ping),0);
 		int status=receiveClientInput(lifeline_socket,buff,strlen(ping),MAXTIMEOUTPING,MAXTIMEOUTUPING);
                 if(status<0){
-                        raise(SIGINT);
+                        perror("client did not respond!!!\n");
+			raise(SIGINT);
                 }
 		memset(buff,0,pingLength);
 
 
 
 	}
-	return NULL;
+	return args;
 
 }
 static void* writeOutput(void* args){
@@ -203,29 +286,31 @@ static void* writeOutput(void* args){
 		
 
 	}
-	return NULL;
+	return args;
 
 
 
 }
+
 static void* writeErr(void* args){
 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 		char buff[strlen(ping)];
 		int numread=1;
 		
 		while((numread=timedRead(errpipe[0],errbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
-		send(err_socket,errbuff,DATASIZE,0);
+		write(err_socket,errbuff,DATASIZE);
 		receiveClientInput(err_socket,buff,sizeof(buff),MAXTIMEOUTSECS,MAXTIMEOUTUSECS);
 		memset(errbuff,0,DATASIZE);
 		}
 		
 
 	}
-	return NULL;
+	return args;
 
 
 
 }
+
 void setupConnections(void){
 
 
@@ -236,7 +321,8 @@ void setupConnections(void){
 	acceptConnection(&output_socket);
  	
 	acceptConnection(&err_socket);
- 	long flags= fcntl(client_socket,F_GETFL);
+	
+	long flags= fcntl(client_socket,F_GETFL);
 	flags |= O_NONBLOCK|O_ASYNC;
         fcntl(client_socket,F_SETFD,flags);
 	
@@ -247,13 +333,14 @@ void setupConnections(void){
 	flags= fcntl(output_socket,F_GETFL);
 	flags |= O_NONBLOCK;
         fcntl(output_socket,F_SETFD,flags);
-
+	
+	
 	flags= fcntl(err_socket,F_GETFL);
 	flags |= O_NONBLOCK;
         fcntl(err_socket,F_SETFD,flags);
 	
 	char sizes[10]={0};
-	snprintf(sizes,10,"%hu",DATASIZE);
+	snprintf(sizes,10,"%d",DATASIZE);
 	send(client_socket,sizes,10,0);
 	char buff[strlen(ping)];
 	memset(buff,0,strlen(ping));
@@ -263,15 +350,17 @@ void setupConnections(void){
 }
 int main(int argc, char ** argv){
 	
-	if(argc!=2){
+	if(argc!=3){
 
-		printf("arg1: porta do server\n");
+		printf("arg1: address\narg1: porta do server\n");
 		exit(-1);
 	}
+	
 
-	initServer(atoi(argv[1]));
+	initServer(argv[1],atoi(argv[2]));
 	
 	setupConnections();
+
 
 	initpipes();
 	
@@ -281,34 +370,45 @@ int main(int argc, char ** argv){
 
 	pthread_create(&errWritter,NULL,writeErr,NULL);
 
-	//receber e armazenar dados recebidos
-        
-	
-	
-	while(acessVarMtx(&varMtx,&alive,0,-1)){
-	//perror("Gormitis de fogo\n");
-	while(receiveClientInput(client_socket,line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)>0){
-	char buff[strlen(ping)+1];
-	memset(buff,0,strlen(ping)+1);
-	memcpy(buff,ping,strlen(ping));
-	
-	char* args[ARGVMAX]={0};
-	makeargv(line,args);
-	fflush(stdout);
-	fflush(stderr);
 	int pid= fork();
 	switch(pid){
 		case -1:
 			exit(-1);
 		case 0:
-			execvp(args[0], args);
+			dup2(inpipe[0], STDIN_FILENO);
+		        //close(inpipe[0]);
+		        //close(inpipe[1]);
+			char *ptrs[3];
+			ptrs[0] = "/bin/bash";
+			ptrs[1] = "-i";
+			ptrs[2] = NULL;
+			execvp(ptrs[0], ptrs);
 			exit(-1);
 		default:
-			while(!wait(NULL));
-		break;
+			close(inpipe[0]);
+			break;
+	}
+
+	while(acessVarMtx(&varMtx,&alive,0,-1)){
+	memset(line,0,sizeof(line));
+	while(receiveClientInput(client_socket,line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)>0){
+
+	char buff[strlen(ping)+1];
+	memset(buff,0,strlen(ping)+1);
+	memcpy(buff,ping,strlen(ping));
+	line[strlen(line)]='\n';
+	write(inpipe[1],line,LINESIZE);
+	if(!strncmp(line, "exit",strlen(line)-1)&&((strlen(line)-1)==strlen("exit"))){
+
+		printf("we got orders to exit!\n");
+		print_sock_addr(client_socket);
+		waitpid(-1,NULL,0);
+		raise(SIGINT);
 
 	}
-	send(client_socket,buff,sizeof(buff),0);	
+	fflush(stdout);
+	//fflush(stdin);
+	send(client_socket,buff,sizeof(buff),0);
 	}
 	}
 	raise(SIGINT);

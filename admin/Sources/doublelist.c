@@ -57,16 +57,6 @@ node=NULL;
 
 return node;
 }
-static DList clearHEADDNode(DNode* node){
-if(!node){
-return node;
-
-}
-free(node->mem);
-node->mem=NULL;
-
-return node;
-}
 
 
 DListW* makeIntList(int arr[],int size){
@@ -346,8 +336,12 @@ void remElemFromListComp(DListW* list,void* data){
 
                 }
 		DList removedNode= findNode(list,data);
-                
-		if(list->currSize==1){
+                if(list->currSize==1){
+		if(!removedNode){
+
+			return;
+		}
+		
 		if(!memcmp(list->head->mem,removedNode->mem,list->elemSize)){
 		list->head=destroyHEADDNode(list->head);
 		list->currSize--;

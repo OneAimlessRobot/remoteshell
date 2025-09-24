@@ -30,11 +30,32 @@ char* outbuff=NULL;
 char* errbuff=NULL;
 
 u_int64_t goPlease=0; 
-int client_socket,lifeline_socket, output_socket,err_socket;
+int client_socket,lifeline_socket, output_socket;
+int err_socket;
 static struct sockaddr_in server_address;
 
-static void sigint_handler(int signal){
+static int64_t receiveServerOutput(int socket,char buff[],u_int64_t size,int secwait,int usecwait){
+                int iResult;
+                struct timeval tv;
+                fd_set rfds;
+                FD_ZERO(&rfds);
+                FD_SET(socket,&rfds);
+                tv.tv_sec=secwait;
+                tv.tv_usec=usecwait;
+                iResult=select(socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
+                if(iResult>0){
+                return recv(socket,buff,size,0);
+                }
+                return -1;
+}
 
+static void sigint_handler(int signal){
+	char line[LINESIZE];
+	memset(line,0,LINESIZE);
+	char buff[strlen(ping)+1];
+	strncat(line,"exit",min(LINESIZE-1,strlen("exit")));
+	send(client_socket,line,LINESIZE,0);
+	receiveServerOutput(client_socket,buff,sizeof(buff),MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
 	acessVarMtx(&varMtx,&alive,0,0);
 	acessVarMtx(&varMtx,&goPlease,0,1);
 	pthread_cond_signal(&readyCond);
@@ -56,29 +77,16 @@ static void sigint_handler(int signal){
 
 }
 static void sigpipe_handler(int signal){
-
+	printf("SIG PIPE!!!\n");
 	raise(SIGINT+0*signal);
 	
-}
-static int64_t receiveServerOutput(int socket,char buff[],u_int64_t size,int secwait,int usecwait){
-                int iResult;
-                struct timeval tv;
-                fd_set rfds;
-                FD_ZERO(&rfds);
-                FD_SET(socket,&rfds);
-                tv.tv_sec=secwait;
-                tv.tv_usec=usecwait;
-                iResult=select(socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
-                if(iResult>0){
-                return recv(socket,buff,size,0);
-                }
-                return -1;
 }
 
 static void* getOutput(void* args){
 	outbuff=malloc(dataSize);
 	memset(outbuff,0,dataSize);
-	//char buff[strlen(ping)];
+	acessVarMtx(&varMtx,&goPlease,1,0);
+	pthread_cond_signal(&readyCond);
 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 	int numread=1;
 	while((numread=receiveServerOutput(output_socket,outbuff,dataSize,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
@@ -94,7 +102,6 @@ static void* getErr(void* args){
 	errbuff=malloc(dataSize);
 	memset(errbuff,0,dataSize);
 	acessVarMtx(&varMtx,&goPlease,1,0);
-	pthread_cond_signal(&readyCond);
        	//char buff[strlen(ping)];
 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 	int numread=1;
@@ -127,8 +134,7 @@ static void initClient(int port, char* addr){
 	if(err_socket==-1){
 		raise(SIGINT);
 	}
-	
-       long flags= fcntl(client_socket,F_GETFL);
+       	long flags= fcntl(client_socket,F_GETFL);
         flags |= O_NONBLOCK;
         fcntl(client_socket,F_SETFD,flags);
         
@@ -139,11 +145,11 @@ static void initClient(int port, char* addr){
 	flags= fcntl(output_socket,F_GETFL);
         flags |= O_NONBLOCK;
         fcntl(output_socket,F_SETFD,flags);
-
+	
 	flags= fcntl(err_socket,F_GETFL);
         flags |= O_NONBLOCK;
         fcntl(err_socket,F_SETFD,flags);
-
+	
 	signal(SIGINT,sigint_handler);
 	signal(SIGPIPE,sigpipe_handler);
 	server_address.sin_family=AF_INET;
@@ -236,7 +242,7 @@ int main(int argc, char ** argv){
 	printf("%hu\n",dataSize);
 	//especificar socket;
 	send(client_socket,ping,strlen(ping),0);
-	
+	printf("Send de ping feito! %s\n",ping);
 	pthread_create(&connectionChecker,NULL,areYouStillThere,NULL);
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
 	pthread_create(&errPrinter,NULL,getErr,NULL);
@@ -250,15 +256,17 @@ int main(int argc, char ** argv){
 		while(1){
 				char line[LINESIZE];
 				memset(line,0,LINESIZE);
-				printf("RemoteShell:> ");
+				//printf("RemoteShell:> ");
 				fgets(line,LINESIZE,stdin);
 				line[strlen(line)-1]=0;
+				if(!strncmp(line, "exit",strlen(line))&&(strlen(line)==strlen("exit"))){
+					raise(SIGINT);
+				}
 				char buff[strlen(ping)+1];
-				int sent=send(client_socket,line,LINESIZE,0);
+				send(client_socket,line,LINESIZE,0);
 				receiveServerOutput(client_socket,buff,sizeof(buff),MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
-			
 			}
 		        raise(SIGINT);
-	
+
 }
 

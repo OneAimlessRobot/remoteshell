@@ -59,16 +59,6 @@ node=NULL;
 
 return node;
 }
-static DList clearHEADDNode(DNode* node){
-if(!node){
-return node;
-
-}
-free(node->mem);
-node->mem=NULL;
-
-return node;
-}
 
 
 DListWComp* makeIntListComp(int arr[],int size,comparator*comp){

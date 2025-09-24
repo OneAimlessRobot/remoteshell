@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <time.h>
+#include <netdb.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>

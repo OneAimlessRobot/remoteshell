@@ -7,10 +7,11 @@ RESDIR= ./resources
  
 CURRDIR=echo `pwd`
  
-CC= gcc
+CC= clang
 DEPFLAGS= -MP -MD
 
-CFLAGS= -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -g $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS) `sdl2-config --libs`
+#CFLAGS= -fsanitize=thread -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -g $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)
+CFLAGS= -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -gdwarf-4 $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)
 
 SOURCEFILES=$(foreach D,$(SOURCES), $(wildcard $(D)/*.c))
 
@@ -34,7 +35,7 @@ $(BINARY): $(OBJECTS)
 
 
 %.o:%.c
-	$(CC) -g  $(CFLAGS) -c -o $@ $<  $(LDLIBS)
+	$(CC) -g  $(CFLAGS) -c -o $@ $<
 	echo $(CFLAGS)
 
 clean:

@@ -30,7 +30,12 @@ static pthread_t errWritter;
 int outpipe[2];
 int errpipe[2];
 int inpipe[2];
-int32_t server_socket,client_socket,output_socket,lifeline_socket,err_socket;
+
+/*int master_fd=-1;
+int slave_fd=-1;*/
+
+int32_t server_socket,client_socket,output_socket,lifeline_socket;
+int err_socket;
 
 char line[LINESIZE]={0};
 char  outbuff[DATASIZE]={0};
@@ -87,6 +92,7 @@ static void sigint_handler(int signal){
         close(lifeline_socket);
         close(output_socket);
 	close(err_socket);
+	//close(master_fd);
 	close(outpipe[0]);
 	close(outpipe[1]);
 	close(errpipe[0]);
@@ -273,11 +279,13 @@ static void* areYouStillThere(void* args){
 	return args;
 
 }
+
 static void* writeOutput(void* args){
 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 		char buff[strlen(ping)];
 		int numread=1;
 		while((numread=timedRead(outpipe[0],outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
+		//while((numread=timedRead(master_fd,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
 		send(output_socket,outbuff,DATASIZE,0);
 		receiveClientInput(output_socket,buff,sizeof(buff),MAXTIMEOUTSECS,MAXTIMEOUTUSECS);
 		memset(outbuff,0,DATASIZE);
@@ -310,7 +318,6 @@ static void* writeErr(void* args){
 
 
 }
-
 void setupConnections(void){
 
 
@@ -376,8 +383,8 @@ int main(int argc, char ** argv){
 			exit(-1);
 		case 0:
 			dup2(inpipe[0], STDIN_FILENO);
-		        //close(inpipe[0]);
-		        //close(inpipe[1]);
+		        close(inpipe[0]);
+		        close(inpipe[1]);
 			char *ptrs[3];
 			ptrs[0] = "/bin/bash";
 			ptrs[1] = "-i";
@@ -388,7 +395,41 @@ int main(int argc, char ** argv){
 			close(inpipe[0]);
 			break;
 	}
+	
+	//dup2(inpipe[0], STDIN_FILENO);
+		        //close(inpipe[0]);
+		        //close(inpipe[1]);
+	/*char* ptrs[3];
+	char pty_name[128]={0};
+	openpty(&master_fd,&slave_fd,pty_name,NULL,NULL);
+	printf("Pty name: %s\n",pty_name);
+	long flags= fcntl(master_fd,F_GETFL);
+	flags |= O_NONBLOCK|O_ASYNC;
+        fcntl(master_fd,F_SETFD,flags);
 
+	int pid=fork();
+	switch(pid){
+		case -1:
+			exit(-1);
+		case 0:
+			close(master_fd);
+			setsid();
+			ioctl(slave_fd,TIOCSCTTY,0);
+			dup2(slave_fd,0);
+			dup2(slave_fd,1);
+			dup2(slave_fd,2);
+			close(slave_fd);
+			ptrs[0] = "/bin/bash";
+			ptrs[1] = "-i";
+			ptrs[2] = NULL;
+			login_tty(slave_fd);
+			execvp(ptrs[0], ptrs);
+			exit(-1);
+		default:
+			close(slave_fd);
+			break;
+	}
+	*/
 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 	memset(line,0,sizeof(line));
 	while(receiveClientInput(client_socket,line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)>0){
@@ -398,6 +439,7 @@ int main(int argc, char ** argv){
 	memcpy(buff,ping,strlen(ping));
 	line[strlen(line)]='\n';
 	write(inpipe[1],line,LINESIZE);
+	//write(master_fd,line,LINESIZE);
 	if(!strncmp(line, "exit",strlen(line)-1)&&((strlen(line)-1)==strlen("exit"))){
 
 		printf("we got orders to exit!\n");
@@ -407,7 +449,7 @@ int main(int argc, char ** argv){
 
 	}
 	fflush(stdout);
-	//fflush(stdin);
+	fflush(stderr);
 	send(client_socket,buff,sizeof(buff),0);
 	}
 	}

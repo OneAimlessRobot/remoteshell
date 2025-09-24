@@ -1,6 +1,6 @@
 BINARY= admin.exe
 
-LDLIBS=  -lm -lncurses -lpthread
+LDLIBS=  -lm -lncurses -lpthread -lutil
 INCLUDE= ./Includes .
 SOURCES= . ./Sources
 RESDIR= ./resources

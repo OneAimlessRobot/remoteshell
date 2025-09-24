@@ -7,3 +7,5 @@
 #include <unistd.h>
 #include <limits.h>
 #include <time.h>
+#include <pty.h>
+#include <utmp.h>

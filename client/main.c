@@ -29,7 +29,7 @@ static pthread_t errPrinter;
 char* outbuff=NULL;
 char* errbuff=NULL;
 
-u_int64_t goPlease=0; 
+u_int64_t goPlease=0;
 int client_socket,lifeline_socket, output_socket;
 int err_socket;
 static struct sockaddr_in server_address;
@@ -102,8 +102,7 @@ static void* getErr(void* args){
 	errbuff=malloc(dataSize);
 	memset(errbuff,0,dataSize);
 	acessVarMtx(&varMtx,&goPlease,1,0);
-       	//char buff[strlen(ping)];
-	while(acessVarMtx(&varMtx,&alive,0,-1)){
+ 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 	int numread=1;
 	while((numread=receiveServerOutput(err_socket,errbuff,dataSize,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
 				fprintf(stderr,"%s",errbuff);
@@ -137,25 +136,26 @@ static void initClient(int port, char* addr){
        	long flags= fcntl(client_socket,F_GETFL);
         flags |= O_NONBLOCK;
         fcntl(client_socket,F_SETFD,flags);
-        
+
 	flags= fcntl(lifeline_socket,F_GETFL);
         flags |= O_NONBLOCK;
         fcntl(lifeline_socket,F_SETFD,flags);
-	
+
 	flags= fcntl(output_socket,F_GETFL);
         flags |= O_NONBLOCK;
         fcntl(output_socket,F_SETFD,flags);
-	
+
+
 	flags= fcntl(err_socket,F_GETFL);
         flags |= O_NONBLOCK;
         fcntl(err_socket,F_SETFD,flags);
-	
+
 	signal(SIGINT,sigint_handler);
 	signal(SIGPIPE,sigpipe_handler);
 	server_address.sin_family=AF_INET;
-	server_address.sin_addr.s_addr = inet_addr(addr);	
+	server_address.sin_addr.s_addr = inet_addr(addr);
 	server_address.sin_port= htons(port);
-	
+
 
 }
 
@@ -185,11 +185,10 @@ void tryConnect(int* socket){
 		t.tv_sec=MAXTIMEOUTCONS;
 		t.tv_usec=MAXTIMEOUTUCONS;
 		int iResult=select((*socket)+1,0,&wfds,0,&t);
-		
+
 		if(iResult>0&&!success&&((*socket)!=-1)){
-		//printf("Coneccao de %s!!!!!!\n",inet_ntoa(server_address.sin_addr));		
 			break;
-			
+
 		}
 		fprintf(stderr,"Não foi possivel: %s\n",strerror(errno));
         }
@@ -234,9 +233,9 @@ int main(int argc, char ** argv){
 	tryConnect(&lifeline_socket);
 	tryConnect(&output_socket);
 	tryConnect(&err_socket);
-	
+
 	char buff2[10]={0};
-	
+
 	receiveServerOutput(client_socket,buff2,10,MAXTIMEOUTCONS,MAXTIMEOUTUCONS);
 	sscanf(buff2,"%hu",&dataSize);
 	printf("%hu\n",dataSize);
@@ -256,7 +255,7 @@ int main(int argc, char ** argv){
 		while(1){
 				char line[LINESIZE];
 				memset(line,0,LINESIZE);
-				//printf("RemoteShell:> ");
+				printf("RemoteShell:> ");
 				fgets(line,LINESIZE,stdin);
 				line[strlen(line)-1]=0;
 				if(!strncmp(line, "exit",strlen(line))&&(strlen(line)==strlen("exit"))){

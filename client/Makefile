@@ -1,4 +1,4 @@
-BINARY= client
+BINARY= client.exe
 
 LDLIBS=  -lm -lncurses -lpthread
 INCLUDE= ./Includes .

@@ -1,4 +1,4 @@
-BINARY= remoteshell
+BINARY= remoteshell.exe
 
 LDLIBS=  -lm
 INCLUDE= ./Includes .

@@ -1,4 +1,4 @@
-BINARY= admin
+BINARY= admin.exe
 
 LDLIBS=  -lm -lncurses -lpthread
 INCLUDE= ./Includes .

@@ -2,7 +2,7 @@
 socklen_t socklenvar[2]= {sizeof(struct sockaddr),sizeof(struct sockaddr_in)};
 
 static const char* ping= "gimmemore!";
-
+static int enable_tty_mode=0;
 static u_int64_t alive=1;
 #define MAXNUMBEROFTRIES 10
 
@@ -31,8 +31,8 @@ int outpipe[2];
 int errpipe[2];
 int inpipe[2];
 
-/*int master_fd=-1;
-int slave_fd=-1;*/
+int master_fd=-1;
+int slave_fd=-1;
 
 int32_t server_socket,client_socket,output_socket,lifeline_socket;
 int err_socket;
@@ -86,21 +86,27 @@ static void sigint_handler(int signal){
 	acessVarMtx(&varMtx,&alive,0,0);
         pthread_join(connectionChecker,NULL);
 	pthread_join(outputWritter,NULL);
-	pthread_join(errWritter,NULL);
+	if(!enable_tty_mode){
+		pthread_join(errWritter,NULL);
+	}
 	close(server_socket);
 	close(client_socket);
         close(lifeline_socket);
         close(output_socket);
-	close(err_socket);
-	//close(master_fd);
-	close(outpipe[0]);
-	close(outpipe[1]);
-	close(errpipe[0]);
-	close(errpipe[1]);
-	close(inpipe[0]);
-	close(inpipe[1]);
-	fflush(stdout);
-	fflush(stderr);
+	if(enable_tty_mode){
+		close(master_fd);
+	}
+	else{
+		close(outpipe[0]);
+		close(outpipe[1]);
+		close(errpipe[0]);
+		close(errpipe[1]);
+		close(inpipe[0]);
+		close(inpipe[1]);
+		fflush(stdout);
+		fflush(stderr);
+		close(err_socket);
+	}
 	close(0);
 	close(1);
 	close(2);
@@ -114,7 +120,11 @@ static void sigpipe_handler(int signal){
 
 static void initpipes(void){
 
+if(enable_tty_mode){
 
+	return;
+
+}
 if(pipe(outpipe)){
 perror("Erro a criar pipe de stdout!!!\n");
 raise(SIGINT);
@@ -203,6 +213,7 @@ static void initServer(char* address,int port){
 	
 	server_socket= socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
 	if(server_socket==-1){
+		perror("Nao foi possivel criar server socket!!!\n");
 		raise(SIGINT);
 	}
 	int ptr=1;
@@ -284,8 +295,7 @@ static void* writeOutput(void* args){
 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 		char buff[strlen(ping)];
 		int numread=1;
-		while((numread=timedRead(outpipe[0],outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
-		//while((numread=timedRead(master_fd,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
+		while((numread=timedRead(enable_tty_mode?master_fd:outpipe[0],outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0){
 		send(output_socket,outbuff,DATASIZE,0);
 		receiveClientInput(output_socket,buff,sizeof(buff),MAXTIMEOUTSECS,MAXTIMEOUTUSECS);
 		memset(outbuff,0,DATASIZE);
@@ -326,110 +336,120 @@ void setupConnections(void){
 	acceptConnection(&lifeline_socket);
 	
 	acceptConnection(&output_socket);
- 	
-	acceptConnection(&err_socket);
-	
+
 	long flags= fcntl(client_socket,F_GETFL);
 	flags |= O_NONBLOCK|O_ASYNC;
         fcntl(client_socket,F_SETFD,flags);
-	
+
 	flags= fcntl(lifeline_socket,F_GETFL);
 	flags |= O_NONBLOCK;
         fcntl(lifeline_socket,F_SETFD,flags);
-	
+
 	flags= fcntl(output_socket,F_GETFL);
 	flags |= O_NONBLOCK;
         fcntl(output_socket,F_SETFD,flags);
-	
-	
-	flags= fcntl(err_socket,F_GETFL);
-	flags |= O_NONBLOCK;
-        fcntl(err_socket,F_SETFD,flags);
-	
-	char sizes[10]={0};
-	snprintf(sizes,10,"%d",DATASIZE);
+
+ 	char sizes[10]={0};
+	snprintf(sizes,10,"%d %d",DATASIZE,enable_tty_mode);
 	send(client_socket,sizes,10,0);
 	char buff[strlen(ping)];
 	memset(buff,0,strlen(ping));
 	receiveClientInput(client_socket,buff,strlen(ping),MAXTIMEOUTCONS,MAXTIMEOUTUCONS);
-	
+
+	if(!enable_tty_mode){
+		acceptConnection(&err_socket);
+		flags= fcntl(err_socket,F_GETFL);
+		flags |= O_NONBLOCK;
+        	fcntl(err_socket,F_SETFD,flags);
+	}
 
 }
 int main(int argc, char ** argv){
 	
-	if(argc!=3){
+	if(argc!=5){
 
-		printf("arg1: address\narg1: porta do server\n");
+		printf("arg1: address\narg2: porta do server\narg3: shell to use\narg4: 0/1 = (dis)/(en)able tty mode (experimental)\n");
+		exit(-1);
+	}
+	enable_tty_mode=atoi(argv[4]);
+	if((enable_tty_mode<0)||(enable_tty_mode>1)){
+
+		printf("arg4 so pode ser 0 ou 1!\n");
 		exit(-1);
 	}
 	
-
 	initServer(argv[1],atoi(argv[2]));
-	
+	printf("Shell name: %s\n",argv[3]);
 	setupConnections();
 
 
 	initpipes();
-	
+
 	pthread_create(&connectionChecker,NULL,areYouStillThere,NULL);
-	
+
 	pthread_create(&outputWritter,NULL,writeOutput,NULL);
 
-	pthread_create(&errWritter,NULL,writeErr,NULL);
-
-	int pid= fork();
-	switch(pid){
-		case -1:
-			exit(-1);
-		case 0:
-			dup2(inpipe[0], STDIN_FILENO);
-		        close(inpipe[0]);
-		        close(inpipe[1]);
-			char *ptrs[3];
-			ptrs[0] = "/bin/bash";
-			ptrs[1] = "-i";
-			ptrs[2] = NULL;
-			execvp(ptrs[0], ptrs);
-			exit(-1);
-		default:
-			close(inpipe[0]);
-			break;
+	if(!enable_tty_mode){
+		pthread_create(&errWritter,NULL,writeErr,NULL);
+		char *ptrs[3];
+		char arg0[LINESIZE]={0};
+		char arg1[LINESIZE]={0};
+		int pid= fork();
+		switch(pid){
+			case -1:
+				exit(-1);
+			case 0:
+				dup2(inpipe[0], STDIN_FILENO);
+			        close(inpipe[0]);
+			        close(inpipe[1]);
+				snprintf(arg0,LINESIZE-1,"/bin/%s",argv[3]);
+				ptrs[0]=arg0;
+				snprintf(arg1,LINESIZE-1,"-i");
+				ptrs[1]=arg1;
+				ptrs[2]=NULL;
+				execvp(ptrs[0], ptrs);
+				exit(-1);
+			default:
+				close(inpipe[0]);
+				break;
+		}
 	}
-	
-	//dup2(inpipe[0], STDIN_FILENO);
-		        //close(inpipe[0]);
-		        //close(inpipe[1]);
-	/*char* ptrs[3];
-	char pty_name[128]={0};
-	openpty(&master_fd,&slave_fd,pty_name,NULL,NULL);
-	printf("Pty name: %s\n",pty_name);
-	long flags= fcntl(master_fd,F_GETFL);
-	flags |= O_NONBLOCK|O_ASYNC;
-        fcntl(master_fd,F_SETFD,flags);
+	else{
+		char* ptrs[3];
+		char pty_name[128]={0};
+		openpty(&master_fd,&slave_fd,pty_name,NULL,NULL);
+		printf("Pty name: %s\n",pty_name);
+		long flags= fcntl(master_fd,F_GETFL);
+		flags |= O_NONBLOCK|O_ASYNC;
+	        fcntl(master_fd,F_SETFD,flags);
 
-	int pid=fork();
-	switch(pid){
-		case -1:
-			exit(-1);
-		case 0:
-			close(master_fd);
-			setsid();
-			ioctl(slave_fd,TIOCSCTTY,0);
-			dup2(slave_fd,0);
-			dup2(slave_fd,1);
-			dup2(slave_fd,2);
-			close(slave_fd);
-			ptrs[0] = "/bin/bash";
-			ptrs[1] = "-i";
-			ptrs[2] = NULL;
-			login_tty(slave_fd);
-			execvp(ptrs[0], ptrs);
-			exit(-1);
-		default:
-			close(slave_fd);
-			break;
+		int pid=fork();
+		switch(pid){
+			case -1:
+				exit(-1);
+			case 0:
+				close(master_fd);
+				setsid();
+				ioctl(slave_fd,TIOCSCTTY,0);
+				dup2(slave_fd,0);
+				dup2(slave_fd,1);
+				dup2(slave_fd,2);
+				close(slave_fd);
+				char arg0[LINESIZE]={0};
+				snprintf(arg0,LINESIZE-1,"/bin/%s",argv[3]);
+				ptrs[0]=arg0;
+				char arg1[LINESIZE]={0};
+				snprintf(arg1,LINESIZE-1,"-i");
+				ptrs[1]=arg1;
+				ptrs[2]=NULL;
+				login_tty(slave_fd);
+				execvp(ptrs[0], ptrs);
+				exit(-1);
+			default:
+				close(slave_fd);
+				break;
+		}
 	}
-	*/
 	while(acessVarMtx(&varMtx,&alive,0,-1)){
 	memset(line,0,sizeof(line));
 	while(receiveClientInput(client_socket,line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)>0){
@@ -438,8 +458,7 @@ int main(int argc, char ** argv){
 	memset(buff,0,strlen(ping)+1);
 	memcpy(buff,ping,strlen(ping));
 	line[strlen(line)]='\n';
-	write(inpipe[1],line,LINESIZE);
-	//write(master_fd,line,LINESIZE);
+	write(enable_tty_mode?master_fd:inpipe[1],line,LINESIZE);
 	if(!strncmp(line, "exit",strlen(line)-1)&&((strlen(line)-1)==strlen("exit"))){
 
 		printf("we got orders to exit!\n");
@@ -448,8 +467,10 @@ int main(int argc, char ** argv){
 		raise(SIGINT);
 
 	}
-	fflush(stdout);
-	fflush(stderr);
+	if(!enable_tty_mode){
+		fflush(stdout);
+		fflush(stderr);
+	}
 	send(client_socket,buff,sizeof(buff),0);
 	}
 	}

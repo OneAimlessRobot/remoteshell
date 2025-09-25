@@ -1,6 +1,8 @@
 #include "Includes/preprocessor.h"
 static const char* ping= "gimmemore!";
 
+static int enable_tty_mode=0;
+
 static u_int64_t alive=1;
 u_int16_t dataSize;
 #define MAXNUMBEROFTRIES 10
@@ -61,17 +63,21 @@ static void sigint_handler(int signal){
 	pthread_cond_signal(&readyCond);
 	pthread_join(connectionChecker,NULL);
 	pthread_join(outputPrinter,NULL);
-	pthread_join(errPrinter,NULL);
+	if(!enable_tty_mode){
+		pthread_join(errPrinter,NULL);
+	}
 	if(outbuff){
 		free(outbuff);
 	}
-	if(errbuff){
+	if(errbuff&&!enable_tty_mode){
 		free(errbuff);
 	}
 	close(client_socket);
 	close(lifeline_socket);
 	close(output_socket);
-	close(err_socket);
+	if(!enable_tty_mode){
+		close(err_socket);
+	}
 	printf("cliente a fechar!!!\n");
 	exit(-1+signal*0);
 
@@ -129,9 +135,11 @@ static void initClient(int port, char* addr){
 	if(output_socket==-1){
 		raise(SIGINT);
 	}
-	err_socket= socket(AF_INET,SOCK_STREAM,0);
-	if(err_socket==-1){
-		raise(SIGINT);
+	if(!enable_tty_mode){
+		err_socket= socket(AF_INET,SOCK_STREAM,0);
+		if(err_socket==-1){
+			raise(SIGINT);
+		}
 	}
        	long flags= fcntl(client_socket,F_GETFL);
         flags |= O_NONBLOCK;
@@ -146,10 +154,12 @@ static void initClient(int port, char* addr){
         fcntl(output_socket,F_SETFD,flags);
 
 
-	flags= fcntl(err_socket,F_GETFL);
-        flags |= O_NONBLOCK;
-        fcntl(err_socket,F_SETFD,flags);
-
+	
+	if(!enable_tty_mode){
+		flags= fcntl(err_socket,F_GETFL);
+	        flags |= O_NONBLOCK;
+	        fcntl(err_socket,F_SETFD,flags);
+	}
 	signal(SIGINT,sigint_handler);
 	signal(SIGPIPE,sigpipe_handler);
 	server_address.sin_family=AF_INET;
@@ -228,23 +238,27 @@ int main(int argc, char ** argv){
 		printf("Utilizacao correta: arg1: ip do server.\narg2: porta\n");
 		exit(-1);
 	}
+	char buff2[10]={0};
 	initClient(atoi(argv[1]),argv[2]);
 	tryConnect(&client_socket);
 	tryConnect(&lifeline_socket);
 	tryConnect(&output_socket);
-	tryConnect(&err_socket);
-
-	char buff2[10]={0};
 
 	receiveServerOutput(client_socket,buff2,10,MAXTIMEOUTCONS,MAXTIMEOUTUCONS);
-	sscanf(buff2,"%hu",&dataSize);
-	printf("%hu\n",dataSize);
-	//especificar socket;
+	sscanf(buff2,"%hu %d",&dataSize,&enable_tty_mode);
+	printf("Datasize: %hu\nEnable tty mode: %d\n",dataSize,enable_tty_mode);
 	send(client_socket,ping,strlen(ping),0);
 	printf("Send de ping feito! %s\n",ping);
+	
+	if(!enable_tty_mode){
+		tryConnect(&err_socket);
+	}
+	//especificar socket;
 	pthread_create(&connectionChecker,NULL,areYouStillThere,NULL);
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
-	pthread_create(&errPrinter,NULL,getErr,NULL);
+	if(!enable_tty_mode){
+		pthread_create(&errPrinter,NULL,getErr,NULL);
+	}
 		pthread_mutex_lock(&readyMtx);
 		while(!acessVarMtx(&varMtx,&goPlease,0,-1)&&acessVarMtx(&varMtx,&alive,0,-1)){
 			pthread_cond_wait(&readyCond,&readyMtx);

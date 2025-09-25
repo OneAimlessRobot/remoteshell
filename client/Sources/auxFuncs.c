@@ -1,5 +1,6 @@
 #include "../Includes/preprocessor.h"
 #include "../Includes/auxFuncs.h"
+socklen_t socklenvar[2]= {sizeof(struct sockaddr),sizeof(struct sockaddr_in)};
 
 double genRanddouble(double min, double max){
 
@@ -109,4 +110,40 @@ int64_t min(int64_t arg1, int64_t arg2){
 	return arg2;
 
 
+}
+void print_addr_aux(char* prompt,struct sockaddr_in* addr){
+         printf("%s\nEndereço: \n%s Porta: %u\n",prompt,inet_ntoa(addr->sin_addr),ntohs(addr->sin_port));
+
+}
+
+void print_sock_addr(int socket){
+
+        struct sockaddr_in addr={0};
+
+        getsockname(socket,(struct sockaddr*)(&addr),&socklenvar[0]);
+
+        print_addr_aux("O endereço desta socket é:\n",&addr);
+
+}
+void init_addr(struct sockaddr_in* addr, char* hostname_str,uint16_t port){
+
+         addr->sin_family=AF_INET;
+        struct addrinfo *addr_info_struct=NULL;
+        int error=0;
+         if((error=getaddrinfo(hostname_str, NULL, NULL, &addr_info_struct))){
+                printf("Erro a obter address a partir de hostname!!\nErro: %s\n",gai_strerror(error));
+                if(addr_info_struct){
+                        freeaddrinfo(addr_info_struct);
+                }
+        }
+
+        memcpy(addr,(struct sockaddr_in*)addr_info_struct->ai_addr,sizeof(struct sockaddr_in));
+
+        addr->sin_port= htons(port);
+
+        print_addr_aux("ip address: ",addr);
+
+        if(addr_info_struct){
+                freeaddrinfo(addr_info_struct);
+        }
 }

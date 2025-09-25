@@ -1,6 +1,8 @@
 #include <ncurses.h>
 #include <stdio.h>
 #include <arpa/inet.h>
+#include <pty.h>
+#include <utmp.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -10,8 +12,10 @@
 #include <errno.h>
 #include <limits.h>
 #include <time.h>
+#include <netdb.h>
 #include <signal.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/time.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -31,5 +35,4 @@
 #include "hashtablecomp.h"
 #define SERVERLOGSX 50
 #define SERVERLOGSY 0
-
 

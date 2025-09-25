@@ -1,10 +1,27 @@
 #include "Includes/preprocessor.h"
-socklen_t socklenvar[2]= {sizeof(struct sockaddr),sizeof(struct sockaddr_in)};
 
 static const char* ping= "gimmemore!";
 static int enable_tty_mode=0;
-static u_int64_t alive=1;
-//static u_int64_t exiting=0;
+static int32_t all_ready=0;
+static int32_t all_alive=0;
+static int32_t err_alive=0;
+static int32_t out_alive=0;
+static int32_t cmd_alive=0;
+static int32_t ping_alive=0;
+static pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t exitCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t exitMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cmdCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t cmdMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t errCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t errMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t outCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t pingCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t pingMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t readyCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t readyMtx= PTHREAD_MUTEX_INITIALIZER;
+
 static const u_int64_t android_comp_mode_on=0;
 #define MAXNUMBEROFTRIES 10
 
@@ -25,17 +42,11 @@ static const u_int64_t android_comp_mode_on=0;
 
 #define DATASIZE 1024
 
-static pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t exitMtx= PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t exitCond= PTHREAD_COND_INITIALIZER;
-//static pthread_mutex_t exitMtx2= PTHREAD_MUTEX_INITIALIZER;
-//static pthread_cond_t exitCond2= PTHREAD_COND_INITIALIZER;
-//static pthread_mutex_t exitMtx3= PTHREAD_MUTEX_INITIALIZER;
-//static pthread_cond_t exitCond3= PTHREAD_COND_INITIALIZER;
 static pthread_t connectionChecker;
 static pthread_t outputWritter;
 static pthread_t errWritter;
 static pthread_t commandPrompt;
+static pthread_t cleanupCrew;
 int outpipe[2];
 int errpipe[2];
 int inpipe[2];
@@ -50,47 +61,12 @@ char  outbuff[DATASIZE]={0};
 char  errbuff[DATASIZE]={0};
 struct sockaddr_in server_address;
 
-static void print_addr_aux(char* prompt,struct sockaddr_in* addr){
-         printf("%s\nEndereço: \n%s Porta: %u\n",prompt,inet_ntoa(addr->sin_addr),ntohs(addr->sin_port));
-
-}
-
-static void print_sock_addr(int socket){
-
-        struct sockaddr_in addr={0};
-
-        getsockname(socket,(struct sockaddr*)(&addr),&socklenvar[0]);
-
-        print_addr_aux("O endereço desta socket é:\n",&addr);
-
-}
-static void init_addr(struct sockaddr_in* addr, char* hostname_str,uint16_t port){
-
-         addr->sin_family=AF_INET;
-        struct addrinfo *addr_info_struct=NULL;
-        int error=0;
-         if((error=getaddrinfo(hostname_str, NULL, NULL, &addr_info_struct))){
-                printf("Erro a obter address a partir de hostname!!\nErro: %s\n",gai_strerror(error));
-                if(addr_info_struct){
-                        freeaddrinfo(addr_info_struct);
-                }
-        }
-
-        memcpy(addr,(struct sockaddr_in*)addr_info_struct->ai_addr,sizeof(struct sockaddr_in));
-
-        addr->sin_port= htons(port);
-
-        print_addr_aux("ip address: ",addr);
-
-        if(addr_info_struct){
-                freeaddrinfo(addr_info_struct);
-        }
-}
 
 	
 static void sigint_handler(int signal){
 
-	acessVarMtx(&varMtx,&alive,0,0*signal);
+	printf("sigint was called in server!!\n");
+	acessVarMtx32(&varMtx,&all_alive,0,0*signal);
 	pthread_cond_signal(&exitCond);
 }
 
@@ -186,7 +162,7 @@ static void acceptConnection(int* socket){
                 tv.tv_usec=MAXTIMEOUTUCONS;
                 iResult=select(server_socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
         if(iResult>0){
- 
+
 		*socket=accept(server_socket,NULL,NULL);
 	}
 	else{
@@ -204,17 +180,19 @@ static void initServer(char* address,int port){
 	server_socket= socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
 	if(server_socket==-1){
 		perror("Nao foi possivel criar server socket!!!\n");
-		raise(SIGINT);
+		exit(-1);
 	}
 	int ptr=1;
 	struct linger the_linger={0,30};
         if(setsockopt(server_socket,SOL_SOCKET,SO_REUSEADDR,(char*)&ptr,sizeof(ptr))){
 		perror("Erro a meter SO_REUSEADDR  na socket (setsockopt)\n");
-		raise(SIGINT);
+		close(server_socket);
+		exit(-1);
 	}
 	if(setsockopt(server_socket,SOL_SOCKET,SO_LINGER,(char*)&the_linger,sizeof(struct linger))){
 		perror("Erro a meter SO_LINGER na socket (setsockopt)\n");
-		raise(SIGINT);
+		close(server_socket);
+		exit(-1);
 	}
 	signal(SIGINT,sigint_handler);
 	signal(SIGPIPE,sigpipe_handler);
@@ -225,11 +203,13 @@ static void initServer(char* address,int port){
 	if(bind(server_socket,(struct sockaddr*) &server_address,sizeof(server_address))){
 
 		perror("Nao foi possivel dar bind!!!\n");
-		raise(SIGINT);
+		close(server_socket);
+		exit(-1);
 	}
         listen(server_socket,3);
 
 }
+
 static int64_t receiveClientInput(int socket,char buff[],u_int64_t size,int secwait,int usecwait){
                 int iResult;
                 struct timeval tv;
@@ -250,6 +230,38 @@ static int64_t receiveClientInput(int socket,char buff[],u_int64_t size,int secw
 		}
 
 }
+void setupConnections(void){
+
+
+	acceptConnection(&lifeline_socket);
+
+	acceptConnection(&output_socket);
+	long flags=0;
+	if(!android_comp_mode_on){
+		flags= fcntl(client_socket,F_GETFL);
+		flags |= O_NONBLOCK|O_ASYNC;
+	        fcntl(client_socket,F_SETFD,flags);
+
+		flags= fcntl(lifeline_socket,F_GETFL);
+		flags |= O_NONBLOCK;
+	        fcntl(lifeline_socket,F_SETFD,flags);
+
+		flags= fcntl(output_socket,F_GETFL);
+		flags |= O_NONBLOCK;
+	        fcntl(output_socket,F_SETFD,flags);
+	}
+ 	
+	if(!enable_tty_mode){
+		acceptConnection(&err_socket);
+		if(!android_comp_mode_on){
+			flags= fcntl(err_socket,F_GETFL);
+			flags |= O_NONBLOCK;
+	        	fcntl(err_socket,F_SETFD,flags);
+		}
+	}
+
+}
+
 static int64_t timedRead(int fd,char buff[],u_int64_t size,int secwait,int usecwait){
                 int iResult;
                 struct timeval tv;
@@ -290,110 +302,113 @@ static int64_t timedSend(int fd,char buff[],u_int64_t size,int secwait,int usecw
 }
 static void* areYouStillThere(void* args){
 	
-        int pingLength=strlen(ping);
+        pthread_mutex_lock(&pingMtx);
+	while(!acessVarMtx32(&varMtx,&ping_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+
+		pthread_cond_wait(&pingCond,&pingMtx);
+
+	}
+	pthread_mutex_unlock(&pingMtx);
+
+	printf("checker online!!!\n");
+
+	out_alive=1;
+
+	err_alive=!enable_tty_mode;
+
+	int pingLength=strlen(ping);
 	char buff[strlen(ping)];
         memset(buff,0,pingLength);
-	while(acessVarMtx(&varMtx,&alive,0,-1)){
+	acessVarMtx32(&varMtx,&ping_alive,1,0);
+	acessVarMtx32(&varMtx,&all_alive,1,0);
+	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
 		char buff[strlen(ping)];
 		int numread=1;
-		while(acessVarMtx(&varMtx,&alive,0,-1)&&((numread=timedRead(lifeline_socket,buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING))>0)){
+		while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(lifeline_socket,buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING))>0)){
 		timedSend(lifeline_socket,(char*)ping,strlen(ping),MAXTIMEOUTPING,MAXTIMEOUTUPING);
 		}
 		raise(SIGINT);
 		break;
 
 	}
+	acessVarMtx32(&varMtx,&ping_alive,0,0);
 	printf("checker out!!!\n");
 	return args;
 
 }
 
 static void* writeOutput(void* args){
-
 	
-	while(acessVarMtx(&varMtx,&alive,0,-1)){
+	pthread_mutex_lock(&outMtx);
+	while(!acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+
+		pthread_cond_wait(&outCond,&outMtx);
+
+	}
+	pthread_mutex_unlock(&outMtx);
+	printf("output writter online!!!\n");
+	
+	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
 		int numread=1;
-		while(acessVarMtx(&varMtx,&alive,0,-1)&&((numread=timedRead(enable_tty_mode?master_fd:outpipe[0],outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>=0)){
+		while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(enable_tty_mode?master_fd:outpipe[0],outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>=0)){
 		if(!numread){
 			continue;
 		}
 		timedSend(output_socket,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS);
 		memset(outbuff,0,DATASIZE);
 		}
-		break;
 
 	}
+	acessVarMtx32(&varMtx,&out_alive,0,0);
 	printf("output writter out!!!\n");
 	return args;
 
 
 
 }
-
 static void* writeErr(void* args){
-	while(acessVarMtx(&varMtx,&alive,0,-1)){
+	pthread_mutex_lock(&errMtx);
+	while(!acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+
+		pthread_cond_wait(&errCond,&errMtx);
+
+	}
+	pthread_mutex_unlock(&errMtx);
+	printf("error writter online!!!\n");
+	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
 		int numread=1;
-		while(acessVarMtx(&varMtx,&alive,0,-1)&&((numread=timedRead(errpipe[0],errbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>=0)){
+		while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(errpipe[0],errbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>=0)){
 		if(!numread){
 			continue;
 		}
 		timedSend(err_socket,errbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS);
-		memset(outbuff,0,DATASIZE);
+		memset(errbuff,0,DATASIZE);
 		}
-		break;
 
 	}
+	acessVarMtx32(&varMtx,&err_alive,0,0);
 	printf("error writter out!!!\n");
 	return args;
 
 
 
 }
-void setupConnections(void){
-
-
-	acceptConnection(&client_socket);
-
-	acceptConnection(&lifeline_socket);
-
-	acceptConnection(&output_socket);
-	long flags=0;
-	if(!android_comp_mode_on){
-		flags= fcntl(client_socket,F_GETFL);
-		flags |= O_NONBLOCK|O_ASYNC;
-	        fcntl(client_socket,F_SETFD,flags);
-
-		flags= fcntl(lifeline_socket,F_GETFL);
-		flags |= O_NONBLOCK;
-	        fcntl(lifeline_socket,F_SETFD,flags);
-
-		flags= fcntl(output_socket,F_GETFL);
-		flags |= O_NONBLOCK;
-	        fcntl(output_socket,F_SETFD,flags);
-	}
- 	char sizes[10]={0};
-	snprintf(sizes,10,"%d %d",DATASIZE,enable_tty_mode);
-	send(client_socket,sizes,10,0);
-	char buff[strlen(ping)];
-	memset(buff,0,strlen(ping));
-	receiveClientInput(client_socket,buff,strlen(ping),MAXTIMEOUTCONS,MAXTIMEOUTUCONS);
-
-	if(!enable_tty_mode){
-		acceptConnection(&err_socket);
-		if(!android_comp_mode_on){
-			flags= fcntl(err_socket,F_GETFL);
-			flags |= O_NONBLOCK;
-	        	fcntl(err_socket,F_SETFD,flags);
-		}
-	}
-
-}
 static void* command_prompt_thread(void* args){
+	
+	pthread_mutex_lock(&cmdMtx);
+	while(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 
+		pthread_cond_wait(&cmdCond,&cmdMtx);
+
+	}
+	pthread_mutex_unlock(&cmdMtx);
+
+	printf("Command prompt about to start!\n");
 	char buff[strlen(ping)+1];
-	while(acessVarMtx(&varMtx,&alive,0,-1)){
+	
+	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	memset(line,0,sizeof(line));
-	while(acessVarMtx(&varMtx,&alive,0,-1)&&(receiveClientInput(client_socket,line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)>=0)){
+	while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&(receiveClientInput(client_socket,line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)>=0)){
 
 	
 	memset(buff,0,strlen(ping)+1);
@@ -406,6 +421,7 @@ static void* command_prompt_thread(void* args){
 		print_sock_addr(client_socket);
 		waitpid(-1,NULL,0);
 		raise(SIGINT);
+		break;
 
 	}
 	write(enable_tty_mode?master_fd:inpipe[1],line,strlen(line));
@@ -414,13 +430,70 @@ static void* command_prompt_thread(void* args){
 		fflush(stderr);
 	}
 	memset(line,0,sizeof(line));
-	//send(client_socket,buff,sizeof(buff),0);
 	}
 	}
+	acessVarMtx32(&varMtx,&all_alive,0,0);
+	acessVarMtx32(&varMtx,&cmd_alive,0,0);
 	printf("Command prompt about to exit!\n");
 	return args;
 
 }
+
+void* cleanup_crew(void*args){
+
+	pthread_mutex_lock(&exitMtx);
+	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
+
+		pthread_cond_wait(&exitCond,&exitMtx);
+
+	}
+	pthread_mutex_unlock(&exitMtx);
+	printf("Cleanup crew called in server\n");
+	if(enable_tty_mode){
+		close(master_fd);
+	}
+	else{
+		close(inpipe[0]);
+		close(inpipe[1]);
+		close(err_socket);
+		close(errpipe[0]);
+		close(errpipe[1]);
+		fflush(stderr);
+		close(outpipe[0]);
+		close(outpipe[1]);
+		fflush(stdout);
+	}
+
+	close(server_socket);
+	close(client_socket);
+	close(lifeline_socket);
+	close(output_socket);
+
+	printf("Cleanup crew called in server\n");
+	if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
+		printf("closing cmdline thread!!\n");
+		pthread_join(commandPrompt,NULL);
+	}
+	if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
+		printf("closing output writter thread!!\n");
+		pthread_join(outputWritter,NULL);
+	}
+	if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
+		printf("closing error printer thread!!\n");
+		pthread_join(errWritter,NULL);
+	}
+	if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
+		printf("closing connection checker thread!!\n");
+		pthread_join(connectionChecker,NULL);
+        }
+	close(0);
+	close(1);
+	close(2);
+	return args;
+
+}
+
+
 int main(int argc, char ** argv){
 	
 	if(argc!=5){
@@ -434,20 +507,30 @@ int main(int argc, char ** argv){
 		printf("arg4 so pode ser 0 ou 1!\n");
 		exit(-1);
 	}
-	
+	all_alive=1;
 	initServer(argv[1],atoi(argv[2]));
+	acceptConnection(&client_socket);
+	char sizes[10]={0};
+	snprintf(sizes,10,"%d %d",DATASIZE,enable_tty_mode);
+	send(client_socket,sizes,10,0);
+	char buff[strlen(ping)];
+	memset(buff,0,strlen(ping));
+	receiveClientInput(client_socket,buff,strlen(ping),MAXTIMEOUTCONS,MAXTIMEOUTUCONS);
+
+	pthread_create(&connectionChecker,NULL,areYouStillThere,NULL);
+
+	pthread_create(&outputWritter,NULL,writeOutput,NULL);
+	if(!enable_tty_mode){
+		pthread_create(&errWritter,NULL,writeErr,NULL);
+	}
+	
 	printf("Shell name: %s\n",argv[3]);
 	setupConnections();
 
 
 	initpipes();
 
-	pthread_create(&connectionChecker,NULL,areYouStillThere,NULL);
-
-	pthread_create(&outputWritter,NULL,writeOutput,NULL);
-
 	if(!enable_tty_mode){
-		pthread_create(&errWritter,NULL,writeErr,NULL);
 		char *ptrs[3];
 		char arg0[LINESIZE]={0};
 		char arg1[LINESIZE]={0};
@@ -509,49 +592,13 @@ int main(int argc, char ** argv){
 				break;
 		}
 	}
+
 	pthread_create(&commandPrompt,NULL,command_prompt_thread,NULL);
-	pthread_mutex_lock(&exitMtx);
-	while(acessVarMtx(&varMtx,&alive,0,-1)){
+	pthread_create(&cleanupCrew,NULL,cleanup_crew,NULL);
 
-		pthread_cond_wait(&exitCond,&exitMtx);
 
-	}
-	pthread_mutex_unlock(&exitMtx);
-	printf("sigint was called in server!!\n");
-	close(client_socket);
-        if(enable_tty_mode){
-		close(master_fd);
-	}
-	else{
-		close(inpipe[0]);
-		close(inpipe[1]);
-	}
-	pthread_join(commandPrompt,NULL);
-	if(!enable_tty_mode){
-		close(err_socket);
-		close(errpipe[0]);
-		close(errpipe[1]);
-		fflush(stderr);
-		pthread_join(errWritter,NULL);
-	}
-        if(!enable_tty_mode){
-		close(master_fd);
-	}
-	close(output_socket);
-	if(!enable_tty_mode){
-
-		close(outpipe[0]);
-		close(outpipe[1]);
-		fflush(stdout);
-	}
-	pthread_join(outputWritter,NULL);
-	close(lifeline_socket);
-	pthread_join(connectionChecker,NULL);
-        close(server_socket);
-	
-	close(0);
-	close(1);
-	close(2);
+	ping_alive=1;
+	pthread_cond_signal(&pingCond);
+	pthread_join(cleanupCrew,NULL);
 	return 0;
 }
-

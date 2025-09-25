@@ -3,7 +3,25 @@ static const char* ping= "gimmemore!";
 
 static int enable_tty_mode=0;
 static const u_int64_t android_comp_mode_on=0;
-static u_int64_t alive=1;
+static int32_t all_ready=1;
+static int32_t all_alive=1;
+static int32_t err_alive=1;
+static int32_t out_alive=1;
+static int32_t cmd_alive=1;
+static int32_t ping_alive=1;
+static pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t exitCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t exitMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cmdCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t cmdMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t errCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t errMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t outCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t pingCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t pingMtx= PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t readyCond= PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t readyMtx= PTHREAD_MUTEX_INITIALIZER;
 u_int16_t dataSize;
 #define MAXNUMBEROFTRIES 10
 
@@ -22,14 +40,11 @@ u_int16_t dataSize;
 #define LINESIZE 1024
 
 
-static pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t readyCond= PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t readyMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_t connectionChecker;
 static pthread_t outputPrinter;
 static pthread_t errPrinter;
-char* outbuff=NULL;
-char* errbuff=NULL;
+char outbuff[LINESIZE*10]={0};
+char errbuff[LINESIZE*10]={0};
 
 u_int64_t goPlease=0;
 int client_socket,lifeline_socket, output_socket;
@@ -111,12 +126,6 @@ static void sigint_handler(int signal){
 	if(!enable_tty_mode){
 		pthread_join(errPrinter,NULL);
 	}
-	if(outbuff){
-		free(outbuff);
-	}
-	if(errbuff&&!enable_tty_mode){
-		free(errbuff);
-	}
 	close(client_socket);
 	close(lifeline_socket);
 	close(output_socket);
@@ -134,8 +143,15 @@ static void sigpipe_handler(int signal){
 }
 
 static void* getOutput(void* args){
+	
+	 pthread_mutex_lock(&outMtx);
+        while(!acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 
-	outbuff=malloc(dataSize);
+                pthread_cond_wait(&outCond,&outMtx);
+
+        }
+        pthread_mutex_unlock(&outMtx);
+
 	memset(outbuff,0,dataSize);
 	acessVarMtx(&varMtx,&goPlease,1,0);
 	pthread_cond_signal(&readyCond);
@@ -154,7 +170,13 @@ static void* getOutput(void* args){
 
 }
 static void* getErr(void* args){
-	errbuff=malloc(dataSize);
+	 pthread_mutex_lock(&err Mtx);
+        while(!acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+
+                pthread_cond_wait(&errCond,&errMtx);
+
+        }
+        pthread_mutex_unlock(&errMtx);
 	memset(errbuff,0,dataSize);
 	acessVarMtx(&varMtx,&goPlease,1,0);
  	while(acessVarMtx(&varMtx,&alive,0,-1)){
@@ -227,7 +249,7 @@ void tryConnect(int* socket){
 	
 	
         while(success==-1&& numOfTries){
-                printf("Tentando conectar a %s (Tentativa %d)!!!!!!\n",inet_ntoa(server_address.sin_addr),-numOfTries+MAXNUMBEROFTRIES+1);		
+                print_addr_aux("Tentando conectar a %s...\n",&server_address);
 		success=connect(*socket,(struct sockaddr*)&server_address,sizeof(server_address));
                int sockerr;
 		socklen_t slen=sizeof(sockerr);
@@ -261,6 +283,13 @@ void tryConnect(int* socket){
 
 }
 static void* areYouStillThere(void* args){
+	pthread_mutex_lock(&readyMtx);
+	while(!acessVarMtx(&varMtx,&goPlease,0,-1)&&acessVarMtx(&varMtx,&alive,0,-1)){
+		pthread_cond_wait(&readyCond,&readyMtx);
+
+	}
+	
+	pthread_mutex_unlock(&readyMtx);
 	int pingLength=strlen(ping);
 	char buff[pingLength];
 	memset(buff,0,pingLength);
@@ -287,23 +316,24 @@ int main(int argc, char ** argv){
 	char buff2[10]={0};
 	initClient(atoi(argv[1]),argv[2]);
 	tryConnect(&client_socket);
-	tryConnect(&lifeline_socket);
-	tryConnect(&output_socket);
-
 	receiveServerOutput(client_socket,buff2,10,MAXTIMEOUTCONS,MAXTIMEOUTUCONS);
 	sscanf(buff2,"%hu %d",&dataSize,&enable_tty_mode);
 	printf("Datasize: %hu\nEnable tty mode: %d\n",dataSize,enable_tty_mode);
 	send(client_socket,ping,strlen(ping),0);
 	printf("Send de ping feito! %s\n",ping);
 	
-	if(!enable_tty_mode){
-		tryConnect(&err_socket);
-	}
 	//especificar socket;
 	pthread_create(&connectionChecker,NULL,areYouStillThere,NULL);
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
 	if(!enable_tty_mode){
 		pthread_create(&errPrinter,NULL,getErr,NULL);
+	}
+	tryConnect(&lifeline_socket);
+	tryConnect(&output_socket);
+
+	
+	if(!enable_tty_mode){
+		tryConnect(&err_socket);
 	}
 		pthread_mutex_lock(&readyMtx);
 		while(!acessVarMtx(&varMtx,&goPlease,0,-1)&&acessVarMtx(&varMtx,&alive,0,-1)){
@@ -320,12 +350,11 @@ int main(int argc, char ** argv){
 			memset(line,0,LINESIZE);
 			memset(buff,0,strlen(ping)+1);
 			fgets(line,LINESIZE,stdin);
+			line[strlen(line)]=enable_tty_mode?'\n':0;
 			if(!strncmp(line, "exit",strlen(line)-enable_tty_mode)&&((strlen(line)-enable_tty_mode)==strlen("exit"))){
 				raise(SIGINT);
 			}
-			line[strlen(line)]=enable_tty_mode?'\n':0;
 			timedSend(client_socket,line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
-			//receiveServerOutput(client_socket,buff,sizeof(buff),MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
 		}
 	        raise(SIGINT);
 

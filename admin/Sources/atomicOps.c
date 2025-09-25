@@ -141,6 +141,44 @@ u_int64_t acessVarMtx(pthread_mutex_t * mtx,u_int64_t* var,u_int64_t value,int o
 
 }
 
+/*
+0- change its value
+1- increment it
+2- decrement it
+3- increment it (by a value)
+
+
+it allways returns the final value of the variable by default
+(whether or not one of the specific options above is chosen (returns original value))
+*/
+int32_t acessVarMtx32(pthread_mutex_t * mtx,int32_t* var,int32_t value,int op){
+	
+	pthread_mutex_lock(mtx);
+	int32_t result=0;
+	switch(op){
+	case 0:
+	(*var)=value;
+	break;
+	case 1:
+	(*var)++;
+	break;
+	case 2:
+	(*var)--;
+	break;
+	case 3:
+	(*var)+=value;
+	break;
+	default:
+	break;
+	}
+	result=(*var);
+	pthread_mutex_unlock(mtx);
+	return result;
+
+
+
+}
+
 void printScrMtx(pthread_mutex_t * mtx,char* str,int y,int x){
 
 	pthread_mutex_lock(mtx);

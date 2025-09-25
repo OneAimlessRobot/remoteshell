@@ -21,7 +21,6 @@ void* acessListMtx(pthread_mutex_t * mtx,DListW* list,void* value,u_int64_t inde
 	if(list){
 	pthread_mutex_lock(mtx);
 	switch(op){
-	break;
 	case 0:
 	if(value){
 	addElemToListComp(list,value);
@@ -75,7 +74,6 @@ void* acessStackMtx(pthread_mutex_t * mtx,stackList* stck,void* value,int op){
 	if(stck){
 	pthread_mutex_lock(mtx);
 	switch(op){
-	break;
 	case 0:
 	if(value){
 	pushDLStack(stck,value);
@@ -120,7 +118,6 @@ u_int64_t acessVarMtx(pthread_mutex_t * mtx,u_int64_t* var,u_int64_t value,int o
 	pthread_mutex_lock(mtx);
 	u_int64_t result=0;
 	switch(op){
-	break;
 	case 0:
 	(*var)=value;
 	break;

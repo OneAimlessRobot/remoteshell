@@ -423,8 +423,8 @@ static void* command_prompt_thread(void* args){
 	write(enable_tty_mode?master_fd:inpipe[1],line,strlen(line));
 	printf("Command received: %s\n",line);
 	
-	printf("O valor deste caracter é: %d\n",line[(strlen(line)-enable_tty_mode)-1]);
-	if(!strncmp(line, "exit",strlen(line)-enable_tty_mode)&&((strlen(line)-enable_tty_mode)==strlen("exit"))){
+	printf("O valor deste caracter é: %d\n",line[(strlen(line))-1]);
+	if(!strncmp(line, "exit",strlen(line)-1)&&((strlen(line)-1)==strlen("exit"))){
 
 		printf("we got orders to exit!\n");
 		print_sock_addr(client_socket);
@@ -479,22 +479,22 @@ void* cleanup_crew(void*args){
 
 	printf("Cleanup crew called in server. About to join threads which are online\n");
 	if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
-		printf("closing cmdline thread!!\n");
+		printf("reaping server cmdline thread!!\n");
 		pthread_join(commandPrompt,NULL);
 	}
 	if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
-		printf("closing output writter thread!!\n");
+		printf("reaping server output writter thread!!\n");
 		pthread_join(outputWritter,NULL);
 	}
 	if(!enable_tty_mode){
 
 		if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
-			printf("closing error printer thread!!\n");
+			printf("reaping server error printer thread!!\n");
 			pthread_join(errWritter,NULL);
 		}
 	}
 	if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
-		printf("closing connection checker thread!!\n");
+		printf("reaping server connection checker thread!!\n");
 		pthread_join(connectionChecker,NULL);
         }
 	printf("Finished cleanup in server.\n");

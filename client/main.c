@@ -229,7 +229,7 @@ static void* getOutput(void* args){
 
         }
         pthread_mutex_unlock(&outMtx);
-	printf("Output printing thread alive!\n");
+	printf("Client's output printing message channel thread alive!\n");
 	memset(outbuff,0,dataSize);
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 	
@@ -246,7 +246,7 @@ static void* getOutput(void* args){
 	}
 	}
 	acessVarMtx32(&varMtx,&out_alive,0,0);
-	printf("Output printing thread exiting!\n");
+	printf("Client's output printing message channel thread exiting!\n");
 	return args;
 
 }
@@ -258,7 +258,7 @@ static void* getErr(void* args){
 
         }
         pthread_mutex_unlock(&errMtx);
-	printf("Error printing thread alive!\n");
+	printf("Client's error message printing channel thread alive!\n");
 	memset(errbuff,0,dataSize);
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 	
@@ -274,7 +274,7 @@ static void* getErr(void* args){
 	}
 	}
 	acessVarMtx32(&varMtx,&err_alive,0,0);
-	printf("Error printing thread exiting!\n");
+	printf("Client's error printing message channel thread exiting!\n");
 	return args;
 
 }
@@ -285,7 +285,7 @@ static void* areYouStillThere(void* args){
 
 	}
 	pthread_mutex_unlock(&pingMtx);
-	printf("Ping thread alive!\n");
+	printf("Client's ping channel thread alive!\n");
 
 
         acessVarMtx32(&varMtx,&out_alive,1,0);
@@ -306,7 +306,7 @@ static void* areYouStillThere(void* args){
 	}
 	}
 	acessVarMtx32(&varMtx,&ping_alive,0,0);
-	printf("Ping thread exiting!\n");
+	printf("Client's ping channel thread exiting!\n");
         raise(SIGINT);
 	return args;
 
@@ -318,7 +318,7 @@ static void* command_line_thread(void* args){
 
 	}
 	pthread_mutex_unlock(&cmdMtx);
-	printf("Command thread alive!\n");
+	printf("Client's command sending channel thread alive!\n");
 	char line[LINESIZE]={0};
 	char buff[strlen(ping)+1];
 	memset(line,0,LINESIZE);
@@ -327,15 +327,17 @@ static void* command_line_thread(void* args){
 		memset(line,0,LINESIZE);
 		memset(buff,0,strlen(ping)+1);
 		fgets(line,LINESIZE,stdin);
-		line[strlen(line)]=enable_tty_mode?'\n':0;
-		if(!strncmp(line, "exit",strlen(line)-enable_tty_mode)&&((strlen(line)-enable_tty_mode)==strlen("exit"))){
+		//line[strlen(line)-1]=enable_tty_mode?'\n':0;
+		line[strlen(line)-1]='\n';
+		//if(!strncmp(line, "exit",strlen(line)-enable_tty_mode)&&((strlen(line)-enable_tty_mode)==strlen("exit"))){
+		if(!strncmp(line, "exit",strlen(line)-1)&&((strlen(line)-1)==strlen("exit"))){
 			raise(SIGINT);
 		}
 		timedSend(client_socket,line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
 	}
 	
 	acessVarMtx32(&varMtx,&cmd_alive,0,0);
-	printf("Command thread exiting!\n");
+	printf("Client's command sending channel thread exiting!\n");
 
 
 
@@ -364,22 +366,22 @@ void* cleanup_crew(void*args){
 
         printf("Cleanup crew called in client. About to join threads which are online\n");
         if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
-                printf("closing cmdline thread!!\n");
+                printf("Reaping client cmdline thread!!\n");
                 pthread_join(commandPrompt,NULL);
         }
         if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
-                printf("closing output writter thread!!\n");
+                printf("Reaping client output writter thread!!\n");
                 pthread_join(outputPrinter,NULL);
         }
         if(!enable_tty_mode){
 
 		if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
-                	printf("closing error printer thread!!\n");
+                	printf("Reaping client error printer thread!!\n");
                 	pthread_join(errPrinter,NULL);
         	}
 	}
         if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
-                printf("closing connection checker thread!!\n");
+                printf("Reaping client connection checker thread!!\n");
                 pthread_join(connectionChecker,NULL);
         }
 	printf("Finished cleanup in client.\n");

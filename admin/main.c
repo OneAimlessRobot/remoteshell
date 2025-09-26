@@ -8,6 +8,7 @@ static int32_t err_alive=0;
 static int32_t out_alive=0;
 static int32_t cmd_alive=0;
 static int32_t ping_alive=0;
+static pthread_mutex_t cleanupMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t exitCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t exitMtx= PTHREAD_MUTEX_INITIALIZER;
@@ -308,7 +309,7 @@ static void* areYouStillThere(void* args){
 	}
 	pthread_mutex_unlock(&pingMtx);
 
-	printf("Server's ping channel thread!!!\n");
+	printf("Server's ping channel thread online!!!\n");
 
 
 	acessVarMtx32(&varMtx,&out_alive,1,0);
@@ -328,6 +329,7 @@ static void* areYouStillThere(void* args){
 		while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(lifeline_socket,buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING))>0)){
 		timedSend(lifeline_socket,(char*)ping,strlen(ping),MAXTIMEOUTPING,MAXTIMEOUTUPING);
 		}
+		acessVarMtx32(&varMtx,&ping_alive,0,0);
 		raise(SIGINT);
 		break;
 
@@ -424,12 +426,12 @@ static void* command_prompt_thread(void* args){
 	printf("Command received: %s\n",line);
 	
 	printf("O valor deste caracter é: %d\n",line[(strlen(line))-1]);
-	if(!strncmp(line, "exit",strlen(line)-1)&&((strlen(line)-1)==strlen("exit"))){
+	if(!strncmp(line, "exit",strlen(line)-1)&&((strlen(line))==strlen("exit"))){
 
 		printf("The server got orders to exit!\n");
+		kill(pid,SIGTERM);
 		print_sock_addr(client_socket);
-		waitpid(-1,NULL,0);
-		raise(SIGINT);
+		waitpid(pid,NULL,0);
 		break;
 
 	}
@@ -440,6 +442,7 @@ static void* command_prompt_thread(void* args){
 	memset(line,0,sizeof(line));
 	}
 	}
+	raise(SIGINT);
 	acessVarMtx32(&varMtx,&all_alive,0,0);
 	acessVarMtx32(&varMtx,&cmd_alive,0,0);
 	printf("Server's command receiving channel thread about to exit!\n");
@@ -449,6 +452,11 @@ static void* command_prompt_thread(void* args){
 
 void* cleanup_crew(void*args){
 
+	pthread_mutex_lock(&cleanupMtx);
+	printf("The server got orders to exit!\n");
+	kill(pid,SIGTERM);
+	print_sock_addr(client_socket);
+	waitpid(pid,NULL,0);
 	pthread_mutex_lock(&exitMtx);
 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
 
@@ -478,29 +486,30 @@ void* cleanup_crew(void*args){
 	close(output_socket);
 
 	printf("Cleanup crew called in server. About to join threads which are online\n");
-	if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
+	//if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
 		printf("reaping server cmdline thread!!\n");
 		pthread_join(commandPrompt,NULL);
-	}
-	if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
+	//}
+	//if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
 		printf("reaping server output writter thread!!\n");
 		pthread_join(outputWritter,NULL);
-	}
+	//}
 	if(!enable_tty_mode){
 
-		if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
+		//if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
 			printf("reaping server error printer thread!!\n");
 			pthread_join(errWritter,NULL);
-		}
+		//}
 	}
-	if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
+	//if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
 		printf("reaping server connection checker thread!!\n");
 		pthread_join(connectionChecker,NULL);
-        }
+        //}
 	printf("Finished cleanup in server.\n");
 	close(0);
 	close(1);
 	close(2);
+	pthread_mutex_unlock(&cleanupMtx);
 	return args;
 
 }
@@ -612,6 +621,7 @@ int main(int argc, char ** argv){
 	signal(SIGPIPE,sigpipe_handler);
 	ping_alive=1;
 	pthread_cond_signal(&pingCond);
+	printf("waiting for session end to reap cleanup crew thread!!\n");
 	pthread_join(cleanupCrew,NULL);
-	return 0;
+        return 0;
 }

@@ -9,6 +9,7 @@ static int32_t err_alive=0;
 static int32_t out_alive=0;
 static int32_t cmd_alive=0;
 static int32_t ping_alive=0;
+static pthread_mutex_t cleanupMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t exitCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t exitMtx= PTHREAD_MUTEX_INITIALIZER;
@@ -346,6 +347,7 @@ static void* command_line_thread(void* args){
 
 void* cleanup_crew(void*args){
 
+        pthread_mutex_lock(&cleanupMtx);
         pthread_mutex_lock(&exitMtx);
         while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
 
@@ -365,29 +367,30 @@ void* cleanup_crew(void*args){
         close(output_socket);
 
         printf("Cleanup crew called in client. About to join threads which are online\n");
-        if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
+        //if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
                 printf("Reaping client cmdline thread!!\n");
                 pthread_join(commandPrompt,NULL);
-        }
-        if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
+        //}
+        //if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
                 printf("Reaping client output writter thread!!\n");
                 pthread_join(outputPrinter,NULL);
-        }
+        //}
         if(!enable_tty_mode){
 
-		if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
+		//if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
                 	printf("Reaping client error printer thread!!\n");
                 	pthread_join(errPrinter,NULL);
-        	}
+        	//}
 	}
-        if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
+        //if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
                 printf("Reaping client connection checker thread!!\n");
                 pthread_join(connectionChecker,NULL);
-        }
+        //}
 	printf("Finished cleanup in client.\n");
         close(0);
         close(1);
         close(2);
+	pthread_mutex_unlock(&cleanupMtx);
         return args;
 
 }
@@ -428,8 +431,8 @@ int main(int argc, char ** argv){
 
         ping_alive=1;
         pthread_cond_signal(&pingCond);
+	printf("waiting for session end to reap cleanup crew thread!!\n");
         pthread_join(cleanupCrew,NULL);
-
 	return 0;
 }
 

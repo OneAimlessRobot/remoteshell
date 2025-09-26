@@ -49,6 +49,8 @@ static pthread_t outputPrinter;
 static pthread_t errPrinter;
 char outbuff[LINESIZE*10]={0};
 char errbuff[LINESIZE*10]={0};
+char line[LINESIZE]={0};
+char raw_line[LINESIZE]={0};
 
 int client_socket,lifeline_socket, output_socket;
 int err_socket;
@@ -235,10 +237,10 @@ static void* getOutput(void* args){
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 	
 	pthread_cond_signal(&cmdCond);
-	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	int numread=1;
 	
-	while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(output_socket,outbuff,dataSize,MAXTIMEOUTCMD,MAXTIMEOUTUCMD))>0)){
+	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(acessVarMtx32(&varMtx,&output_socket,0,-1),outbuff,dataSize,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0)){
 		if(!numread){
 			continue;
 		}
@@ -264,9 +266,9 @@ static void* getErr(void* args){
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 	
 	pthread_cond_signal(&cmdCond);
- 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
+ 	while(acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	int numread=1;
-	while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(err_socket,errbuff,dataSize,MAXTIMEOUTCMD,MAXTIMEOUTUCMD))>0)){
+	while(acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(acessVarMtx32(&varMtx,&err_socket,0,-1),errbuff,dataSize,MAXTIMEOUTCMD,MAXTIMEOUTUCMD))>0)){
 		if(!numread){
 			continue;
 		}
@@ -299,12 +301,16 @@ static void* areYouStillThere(void* args){
 	char buff[pingLength];
 	memset(buff,0,pingLength);
 	
-	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(acessVarMtx32(&varMtx,&ping_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	int numread=1;
-	while(acessVarMtx32(&varMtx,&ping_alive,0,-1)&&((numread=timedSend(lifeline_socket,buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING))>0)){
-		timedRead(lifeline_socket,buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING);
+	while(acessVarMtx32(&varMtx,&ping_alive,0,-1)&&acessVarMtx32(&varMtx,&ping_alive,0,-1)&&((numread=timedSend(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING))>0)){
+		if(timedRead(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING)<=0){
+			break;
+		}
 		memset(buff,0,sizeof(buff));
 	}
+	acessVarMtx32(&varMtx,&all_alive,0,0);
+	break;
 	}
 	acessVarMtx32(&varMtx,&ping_alive,0,0);
 	printf("Client's ping channel thread exiting!\n");
@@ -320,26 +326,31 @@ static void* command_line_thread(void* args){
 	}
 	pthread_mutex_unlock(&cmdMtx);
 	printf("Client's command sending channel thread alive!\n");
-	char line[LINESIZE]={0};
 	char buff[strlen(ping)+1];
 	memset(line,0,LINESIZE);
-	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	memset(raw_line,0,LINESIZE);
+	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 
+		memset(raw_line,0,LINESIZE);
 		memset(line,0,LINESIZE);
 		memset(buff,0,strlen(ping)+1);
-		fgets(line,LINESIZE,stdin);
+		fgets(raw_line,LINESIZE,stdin);
 		//line[strlen(line)-1]=enable_tty_mode?'\n':0;
+		memcpy(line,raw_line,strlen(raw_line));
 		line[strlen(line)-1]='\n';
+		printf("The command (clients perspective): |%s|\nThe raw line: |%s|\n",line,raw_line);
 		//if(!strncmp(line, "exit",strlen(line)-enable_tty_mode)&&((strlen(line)-enable_tty_mode)==strlen("exit"))){
-		if(!strncmp(line, "exit",strlen(line)-1)&&((strlen(line)-1)==strlen("exit"))){
-			raise(SIGINT);
+		if(!strncmp(line, "exit",strlen("exit"))&&((strlen(raw_line))==strlen("exit"))){
+			acessVarMtx32(&varMtx,&all_alive,0,0);
+			break;
 		}
-		timedSend(client_socket,line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
+		timedSend(acessVarMtx32(&varMtx,&client_socket,0,-1),line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
 	}
 	
 	acessVarMtx32(&varMtx,&cmd_alive,0,0);
 	printf("Client's command sending channel thread exiting!\n");
-
+	raise(SIGINT);
+	
 
 
 	return args;
@@ -356,41 +367,39 @@ void* cleanup_crew(void*args){
         }
         pthread_mutex_unlock(&exitMtx);
         printf("Cleanup crew called in client\n");
+        printf("Cleanup crew called in client. About to join threads which are online\n");
+        if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
+                printf("Reaping client cmdline thread!!\n");
+                pthread_join(commandPrompt,NULL);
+        }
+        if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
+                printf("Reaping client output writter thread!!\n");
+                pthread_join(outputPrinter,NULL);
+        }
         if(!enable_tty_mode){
-                close(err_socket);
+
+		if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
+                	printf("Reaping client error printer thread!!\n");
+                	pthread_join(errPrinter,NULL);
+        	}
+	}
+        if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
+                printf("Reaping client connection checker thread!!\n");
+                pthread_join(connectionChecker,NULL);
+        }
+	        if(!enable_tty_mode){
+                close(acessVarMtx32(&varMtx,&err_socket,0,-1));
                 fflush(stderr);
         }
 
+        printf("Cleanup crew called in client. Closing file descriptors and sockets\n");
         fflush(stdout);
-        close(client_socket);
-        close(lifeline_socket);
-        close(output_socket);
+        close(acessVarMtx32(&varMtx,&client_socket,0,-1));
+        close(acessVarMtx32(&varMtx,&lifeline_socket,0,-1));
+        close(acessVarMtx32(&varMtx,&output_socket,0,-1));
 
-        printf("Cleanup crew called in client. About to join threads which are online\n");
-        //if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
-                printf("Reaping client cmdline thread!!\n");
-                pthread_join(commandPrompt,NULL);
-        //}
-        //if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
-                printf("Reaping client output writter thread!!\n");
-                pthread_join(outputPrinter,NULL);
-        //}
-        if(!enable_tty_mode){
-
-		//if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
-                	printf("Reaping client error printer thread!!\n");
-                	pthread_join(errPrinter,NULL);
-        	//}
-	}
-        //if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
-                printf("Reaping client connection checker thread!!\n");
-                pthread_join(connectionChecker,NULL);
-        //}
 	printf("Finished cleanup in client.\n");
-        close(0);
-        close(1);
-        close(2);
-	pthread_mutex_unlock(&cleanupMtx);
+        pthread_mutex_unlock(&cleanupMtx);
         return args;
 
 }
@@ -429,10 +438,14 @@ int main(int argc, char ** argv){
         pthread_create(&cleanupCrew,NULL,cleanup_crew,NULL);
 
 
-        ping_alive=1;
+        acessVarMtx32(&varMtx,&ping_alive,1,0);
         pthread_cond_signal(&pingCond);
 	printf("waiting for session end to reap cleanup crew thread!!\n");
         pthread_join(cleanupCrew,NULL);
+	printf("ending client.\n");
+	close(0);
+        close(1);
+        close(2);
 	return 0;
 }
 

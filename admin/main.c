@@ -2,7 +2,7 @@
 
 static const char* ping= "gimmemore!";
 static int enable_tty_mode=0;
-static int32_t all_ready=0;
+//static int32_t all_ready=0;
 static int32_t all_alive=0;
 static int32_t err_alive=0;
 static int32_t out_alive=0;
@@ -19,9 +19,9 @@ static pthread_cond_t outCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t pingCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t pingMtx= PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t readyCond= PTHREAD_COND_INITIALIZER;
+/*static pthread_cond_t readyCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t readyMtx= PTHREAD_MUTEX_INITIALIZER;
-
+*/
 static const u_int64_t android_comp_mode_on=0;
 #define MAXNUMBEROFTRIES 10
 
@@ -194,8 +194,6 @@ static void initServer(char* address,int port){
 		close(server_socket);
 		exit(-1);
 	}
-	signal(SIGINT,sigint_handler);
-	signal(SIGPIPE,sigpipe_handler);
 	if(android_comp_mode_on){
 		fcntl(server_socket,F_SETFL,O_NONBLOCK);
 	}
@@ -312,9 +310,12 @@ static void* areYouStillThere(void* args){
 
 	printf("checker online!!!\n");
 
-	out_alive=1;
 
-	err_alive=!enable_tty_mode;
+	acessVarMtx32(&varMtx,&out_alive,1,0);
+	acessVarMtx32(&varMtx,&err_alive,!enable_tty_mode,0);
+
+	pthread_cond_signal(&outCond);
+	pthread_cond_signal(&errCond);
 
 	int pingLength=strlen(ping);
 	char buff[strlen(ping)];
@@ -347,7 +348,9 @@ static void* writeOutput(void* args){
 	}
 	pthread_mutex_unlock(&outMtx);
 	printf("output writter online!!!\n");
-	
+	acessVarMtx32(&varMtx,&cmd_alive,1,0);
+
+	pthread_cond_signal(&cmdCond);
 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
 		int numread=1;
 		while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(enable_tty_mode?master_fd:outpipe[0],outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>=0)){
@@ -375,6 +378,10 @@ static void* writeErr(void* args){
 	}
 	pthread_mutex_unlock(&errMtx);
 	printf("error writter online!!!\n");
+	acessVarMtx32(&varMtx,&cmd_alive,1,0);
+
+	pthread_cond_signal(&cmdCond);
+
 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
 		int numread=1;
 		while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(errpipe[0],errbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>=0)){
@@ -413,18 +420,19 @@ static void* command_prompt_thread(void* args){
 	
 	memset(buff,0,strlen(ping)+1);
 	memcpy(buff,ping,strlen(ping));
+	write(enable_tty_mode?master_fd:inpipe[1],line,strlen(line));
+	printf("Command received: %s\n",line);
+	
+	printf("O valor deste caracter é: %d\n",line[(strlen(line)-enable_tty_mode)-1]);
 	if(!strncmp(line, "exit",strlen(line)-enable_tty_mode)&&((strlen(line)-enable_tty_mode)==strlen("exit"))){
 
-		write(enable_tty_mode?master_fd:inpipe[1],"exit",strlen(line));
 		printf("we got orders to exit!\n");
-		kill(pid,SIGTERM);
 		print_sock_addr(client_socket);
 		waitpid(-1,NULL,0);
 		raise(SIGINT);
 		break;
 
 	}
-	write(enable_tty_mode?master_fd:inpipe[1],line,strlen(line));
 	if(!enable_tty_mode){
 		fflush(stdout);
 		fflush(stderr);
@@ -469,7 +477,7 @@ void* cleanup_crew(void*args){
 	close(lifeline_socket);
 	close(output_socket);
 
-	printf("Cleanup crew called in server\n");
+	printf("Cleanup crew called in server. About to join threads which are online\n");
 	if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
 		printf("closing cmdline thread!!\n");
 		pthread_join(commandPrompt,NULL);
@@ -478,14 +486,18 @@ void* cleanup_crew(void*args){
 		printf("closing output writter thread!!\n");
 		pthread_join(outputWritter,NULL);
 	}
-	if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
-		printf("closing error printer thread!!\n");
-		pthread_join(errWritter,NULL);
+	if(!enable_tty_mode){
+
+		if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
+			printf("closing error printer thread!!\n");
+			pthread_join(errWritter,NULL);
+		}
 	}
 	if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
 		printf("closing connection checker thread!!\n");
 		pthread_join(connectionChecker,NULL);
         }
+	printf("Finished cleanup in server.\n");
 	close(0);
 	close(1);
 	close(2);
@@ -523,10 +535,10 @@ int main(int argc, char ** argv){
 	if(!enable_tty_mode){
 		pthread_create(&errWritter,NULL,writeErr,NULL);
 	}
-	
+
+
 	printf("Shell name: %s\n",argv[3]);
 	setupConnections();
-
 
 	initpipes();
 
@@ -596,7 +608,8 @@ int main(int argc, char ** argv){
 	pthread_create(&commandPrompt,NULL,command_prompt_thread,NULL);
 	pthread_create(&cleanupCrew,NULL,cleanup_crew,NULL);
 
-
+	signal(SIGINT,sigint_handler);
+	signal(SIGPIPE,sigpipe_handler);
 	ping_alive=1;
 	pthread_cond_signal(&pingCond);
 	pthread_join(cleanupCrew,NULL);

@@ -308,7 +308,7 @@ static void* areYouStillThere(void* args){
 	}
 	pthread_mutex_unlock(&pingMtx);
 
-	printf("checker online!!!\n");
+	printf("Server's ping channel thread!!!\n");
 
 
 	acessVarMtx32(&varMtx,&out_alive,1,0);
@@ -333,7 +333,7 @@ static void* areYouStillThere(void* args){
 
 	}
 	acessVarMtx32(&varMtx,&ping_alive,0,0);
-	printf("checker out!!!\n");
+	printf("Server's ping channel thread out!!!\n");
 	return args;
 
 }
@@ -347,7 +347,7 @@ static void* writeOutput(void* args){
 
 	}
 	pthread_mutex_unlock(&outMtx);
-	printf("output writter online!!!\n");
+	printf("Server's output message channel thread online!!!\n");
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 
 	pthread_cond_signal(&cmdCond);
@@ -363,7 +363,7 @@ static void* writeOutput(void* args){
 
 	}
 	acessVarMtx32(&varMtx,&out_alive,0,0);
-	printf("output writter out!!!\n");
+	printf("Server's output message channel thread out!!!\n");
 	return args;
 
 
@@ -377,7 +377,7 @@ static void* writeErr(void* args){
 
 	}
 	pthread_mutex_unlock(&errMtx);
-	printf("error writter online!!!\n");
+	printf("Server's error message channel thread online!!!\n");
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 
 	pthread_cond_signal(&cmdCond);
@@ -394,7 +394,7 @@ static void* writeErr(void* args){
 
 	}
 	acessVarMtx32(&varMtx,&err_alive,0,0);
-	printf("error writter out!!!\n");
+	printf("Server's error message channel thread out!!!\n");
 	return args;
 
 
@@ -410,7 +410,7 @@ static void* command_prompt_thread(void* args){
 	}
 	pthread_mutex_unlock(&cmdMtx);
 
-	printf("Command prompt about to start!\n");
+	printf("Server's command receiving channel thread about to start!\n");
 	char buff[strlen(ping)+1];
 	
 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
@@ -426,7 +426,7 @@ static void* command_prompt_thread(void* args){
 	printf("O valor deste caracter é: %d\n",line[(strlen(line))-1]);
 	if(!strncmp(line, "exit",strlen(line)-1)&&((strlen(line)-1)==strlen("exit"))){
 
-		printf("we got orders to exit!\n");
+		printf("The server got orders to exit!\n");
 		print_sock_addr(client_socket);
 		waitpid(-1,NULL,0);
 		raise(SIGINT);
@@ -442,7 +442,7 @@ static void* command_prompt_thread(void* args){
 	}
 	acessVarMtx32(&varMtx,&all_alive,0,0);
 	acessVarMtx32(&varMtx,&cmd_alive,0,0);
-	printf("Command prompt about to exit!\n");
+	printf("Server's command receiving channel thread about to exit!\n");
 	return args;
 
 }

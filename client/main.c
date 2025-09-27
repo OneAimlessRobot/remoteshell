@@ -3,6 +3,7 @@ static const char* ping= "gimmemore!";
 
 static int enable_tty_mode=0;
 static const u_int64_t android_comp_mode_on=0;
+static const u_int32_t one_for_detach_zero_for_join=1;
 //static int32_t all_ready=1;
 static int32_t all_alive=1;
 static int32_t err_alive=0;
@@ -26,17 +27,18 @@ static pthread_mutex_t readyMtx= PTHREAD_MUTEX_INITIALIZER;
 */
 #define MAXNUMBEROFTRIES 10
 
-#define MAXTIMEOUTSECS 1
-#define MAXTIMEOUTUSECS 0
 
-#define MAXTIMEOUTCMD 1
-#define MAXTIMEOUTUCMD 0
-
-#define MAXTIMEOUTCONS (60*5)
+#define MAXTIMEOUTCONS 1
 //#define MAXTIMEOUTCONS 1
 #define MAXTIMEOUTUCONS 0
 
-#define MAXTIMEOUTPING 1
+#define MAXTIMEOUTSECS (60*5)
+#define MAXTIMEOUTUSECS 0
+
+#define MAXTIMEOUTCMD (60*5)
+#define MAXTIMEOUTUCMD 0
+
+#define MAXTIMEOUTPING (60*5)
 #define MAXTIMEOUTUPING 0
 
 #define LINESIZE 1024
@@ -182,18 +184,11 @@ printf("just created command sending channel safety pipe in client\nSetting flag
 
 }
 
-static void safety_close(int safety_fd_write){
-
-
-	write(safety_fd_write,"x",1);
-
-
-}
 static void safety_close(char* prompt_to_show,int safety_fd_write){
 
-        printf("We are trying to close the fd of the following description safely:\n%s\n",prompt_to_show);
+        printf("We are trying to close the fd of the following description safely:\nWe are in the client\n%s\n",prompt_to_show);
         write(safety_fd_write,"x",1);
-
+	printf("Okay! We wrote the closing byte into the safety socket of the following description:\nWe are in the client\n%s\n",prompt_to_show);
 }
 
 static void build_ack_addresses(void){
@@ -558,16 +553,15 @@ static void* command_line_thread(void* args){
 		//if(!strncmp(line, "exit",strlen(line)-enable_tty_mode)&&((strlen(line)-enable_tty_mode)==strlen("exit"))){
 		if(!strncmp(line, "exit",strlen("exit"))&&((strlen(raw_line))==strlen("exit"))){
 			acessVarMtx32(&varMtx,&all_alive,0,0);
+			acessVarMtx32(&varMtx,&cmd_alive,0,0);
 			break;
 		}
 		timedSend(client_socket,cmd_safety_pipe[0],line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
 	}
 	
+	acessVarMtx32(&varMtx,&all_alive,0,0);
 	acessVarMtx32(&varMtx,&cmd_alive,0,0);
 	printf("Client's command sending channel thread exiting!\n");
-	raise(SIGINT);
-	
-
 
 	return args;
 }
@@ -584,35 +578,58 @@ void* cleanup_crew(void*args){
         pthread_mutex_unlock(&exitMtx);
         printf("Cleanup crew called in client\n");
         printf("Cleanup crew called in client. About to join threads which are online\n");
-        if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
+        if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)||!acessVarMtx32(&varMtx,&all_alive,0,-1)){
                 printf("Reaping client cmdline thread!!\n");
-                pthread_join(commandPrompt,NULL);
-        }
-        if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
-                printf("Reaping client output writter thread!!\n");
-                pthread_join(outputPrinter,NULL);
-        }
-        if(!enable_tty_mode){
+		if(!one_for_detach_zero_for_join){
+	                pthread_join(commandPrompt,NULL);
+        	}
+		else{
 
-		if(!acessVarMtx32(&varMtx,&err_alive,0,-1)){
-                	printf("Reaping client error printer thread!!\n");
-                	pthread_join(errPrinter,NULL);
+		        pthread_detach(commandPrompt);
+        	}
+
+	}
+        if(!acessVarMtx32(&varMtx,&out_alive,0,-1)||!acessVarMtx32(&varMtx,&all_alive,0,-1)){
+                printf("Reaping client output writter thread!!\n");
+                if(!one_for_detach_zero_for_join){
+	                pthread_join(outputPrinter,NULL);
+        	}
+		else{
+		        pthread_detach(outputPrinter);
         	}
 	}
-        if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)){
+        if(!enable_tty_mode){
+
+		if(!acessVarMtx32(&varMtx,&err_alive,0,-1)||!acessVarMtx32(&varMtx,&all_alive,0,-1)){
+                	printf("Reaping client error printer thread!!\n");
+                	if(!one_for_detach_zero_for_join){
+	                	pthread_join(errPrinter,NULL);
+        		}
+			else{
+				pthread_detach(errPrinter);
+			}
+		}
+	}
+        if(!acessVarMtx32(&varMtx,&ping_alive,0,-1)||!acessVarMtx32(&varMtx,&all_alive,0,-1)){
                 printf("Reaping client connection checker thread!!\n");
-                pthread_join(connectionChecker,NULL);
-        }
+                if(!one_for_detach_zero_for_join){
+	                pthread_join(connectionChecker,NULL);
+        	}
+		else{
+			pthread_detach(connectionChecker);
+        	
+		}
+	}
 	        if(!enable_tty_mode){
-                safety_close(err_safety_pipe[1]);
+                safety_close("Error message receiving socket",err_safety_pipe[1]);
                 fflush(stderr);
         }
 
         printf("Cleanup crew called in client. Closing file descriptors and sockets\n");
         fflush(stdout);
-        safety_close(cmd_safety_pipe[1]);
-	safety_close(lifeline_safety_pipe[1]);
-        safety_close(out_safety_pipe[1]);
+        safety_close("Command sending socket",cmd_safety_pipe[1]);
+	safety_close("Lifeline ack exchanging socket",lifeline_safety_pipe[1]);
+        safety_close("Output message receiving socket",out_safety_pipe[1]);
 	
 	printf("Finished cleanup in client.\n");
         pthread_mutex_unlock(&cleanupMtx);

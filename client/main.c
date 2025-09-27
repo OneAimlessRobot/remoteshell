@@ -29,7 +29,7 @@ static pthread_mutex_t readyMtx= PTHREAD_MUTEX_INITIALIZER;
 #define MAXTIMEOUTSECS 1
 #define MAXTIMEOUTUSECS 0
 
-#define MAXTIMEOUTCMD (60*5)
+#define MAXTIMEOUTCMD 1
 #define MAXTIMEOUTUCMD 0
 
 #define MAXTIMEOUTCONS (60*5)
@@ -182,14 +182,20 @@ printf("just created command sending channel safety pipe in client\nSetting flag
 
 }
 
-static void safety_close(int socket_descriptor, int safety_fd_write){
+static void safety_close(int safety_fd_write){
 
 
 	write(safety_fd_write,"x",1);
-	close(socket_descriptor);
 
 
 }
+static void safety_close(char* prompt_to_show,int safety_fd_write){
+
+        printf("We are trying to close the fd of the following description safely:\n%s\n",prompt_to_show);
+        write(safety_fd_write,"x",1);
+
+}
+
 static void build_ack_addresses(void){
 
 
@@ -228,9 +234,10 @@ static int64_t timedSend(int fd,int safety_fd,char buff[],u_int64_t size,int sec
                 if(iResult>0){
                 while(read(safety_fd,drain_buff,1)>0){
 
-			printf("reading from safety fd in send function!!!\n");
-			close(safety_fd);
-			return -1;
+			printf("reading from safety fd in the client's timedSend function!!! %s\n",drain_buff);
+                        close(safety_fd);
+                        close(fd);
+                        return -1;
 		}
 		//printf("just read from pipe or not\n");
 		return write(fd,buff,size);
@@ -259,8 +266,9 @@ static int64_t timedRead(int fd,int safety_fd,char buff[],u_int64_t size,int sec
                 if(iResult>0){
                 while(read(safety_fd,drain_buff,1)>0){
 
-			printf("reading from safety fd in read function!!!\n");
-			close(safety_fd);
+			printf("reading from safety fd in the client's timedRead function!!! %s\n",drain_buff);
+                        close(safety_fd);
+			close(fd);
 			return -1;
 		}
 		//printf("just read from pipe or not\n");
@@ -292,8 +300,9 @@ static int64_t timedSendUDP(int fd,int safety_fd,char buff[],u_int64_t size,int 
                 if(iResult>0){
                 while(read(safety_fd,drain_buff,1)>0){
 
-                        printf("reading from safety fd in send function!!!\n");
+                        printf("reading from safety fd in the client's timedSendUDP function!!! %s\n",drain_buff);
                         close(safety_fd);
+                        close(fd);
                         return -1;
                 }
                 //printf("just read from pipe or not\n");
@@ -322,8 +331,9 @@ static int64_t timedReadUDP(int fd,int safety_fd,char buff[],u_int64_t size,int 
                 if(iResult>0){
                 while(read(safety_fd,drain_buff,1)>0){
 
-                        printf("reading from safety fd in read function!!!\n");
+                        printf("reading from safety fd in the client's timedReadUDP function!!! %s\n",drain_buff);
                         close(safety_fd);
+                        close(fd);
                         return -1;
                 }
                 //printf("just read from pipe or not\n");
@@ -378,7 +388,7 @@ static void initClient(int port, char* addr){
 	
 	if(!enable_tty_mode&&!android_comp_mode_on){
 		flags= fcntl(err_socket,F_GETFL);
-	        //flags |= O_NONBLOCK;
+	        flags |= O_NONBLOCK;
 	        fcntl(err_socket,F_SETFD,flags);
 	}
 	signal(SIGINT,sigint_handler);
@@ -446,7 +456,7 @@ static void* getOutput(void* args){
 	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	int numread=1;
 	
-	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(acessVarMtx32(&varMtx,&output_socket,0,-1),out_safety_pipe[0],outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0)){
+	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(output_socket,out_safety_pipe[0],outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0)){
 		if(!numread){
 			continue;
 		}
@@ -474,7 +484,7 @@ static void* getErr(void* args){
 	pthread_cond_signal(&cmdCond);
  	while(acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	int numread=1;
-	while(acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(acessVarMtx32(&varMtx,&err_socket,0,-1),err_safety_pipe[0],errbuff,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD))>0)){
+	while(acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(err_socket,err_safety_pipe[0],errbuff,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD))>0)){
 		if(!numread){
 			continue;
 		}
@@ -505,18 +515,18 @@ static void* areYouStillThere(void* args){
 
 	int pingLength=strlen(ping);
 	char buff[pingLength];
+	int numread=1;
 	memset(buff,0,pingLength);
 	
 	while(acessVarMtx32(&varMtx,&ping_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-	int numread=1;
-	while(acessVarMtx32(&varMtx,&ping_alive,0,-1)&&acessVarMtx32(&varMtx,&ping_alive,0,-1)&&((numread=timedSendUDP(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),lifeline_safety_pipe[0],buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING))>0)){
-		if(timedReadUDP(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),lifeline_safety_pipe[0],buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING)<=0){
-			break;
+		while(acessVarMtx32(&varMtx,&ping_alive,0,-1)&&acessVarMtx32(&varMtx,&ping_alive,0,-1)&&((numread=timedSendUDP(lifeline_socket,lifeline_safety_pipe[0],buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING))>0)){
+			if(timedReadUDP(lifeline_socket,lifeline_safety_pipe[0],buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING)<=0){
+				acessVarMtx32(&varMtx,&all_alive,0,0);
+				break;
+			}
 		}
-		memset(buff,0,sizeof(buff));
-	}
-	acessVarMtx32(&varMtx,&all_alive,0,0);
-	break;
+		acessVarMtx32(&varMtx,&all_alive,0,0);
+		break;
 	}
 	acessVarMtx32(&varMtx,&ping_alive,0,0);
 	printf("Client's ping channel thread exiting!\n");
@@ -550,7 +560,7 @@ static void* command_line_thread(void* args){
 			acessVarMtx32(&varMtx,&all_alive,0,0);
 			break;
 		}
-		timedSend(acessVarMtx32(&varMtx,&client_socket,0,-1),cmd_safety_pipe[0],line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
+		timedSend(client_socket,cmd_safety_pipe[0],line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
 	}
 	
 	acessVarMtx32(&varMtx,&cmd_alive,0,0);
@@ -594,15 +604,15 @@ void* cleanup_crew(void*args){
                 pthread_join(connectionChecker,NULL);
         }
 	        if(!enable_tty_mode){
-                safety_close(acessVarMtx32(&varMtx,&err_socket,0,-1),err_safety_pipe[1]);
+                safety_close(err_safety_pipe[1]);
                 fflush(stderr);
         }
 
         printf("Cleanup crew called in client. Closing file descriptors and sockets\n");
         fflush(stdout);
-        safety_close(acessVarMtx32(&varMtx,&client_socket,0,-1),cmd_safety_pipe[1]);
-	safety_close(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),lifeline_safety_pipe[1]);
-        safety_close(acessVarMtx32(&varMtx,&output_socket,0,-1),out_safety_pipe[1]);
+        safety_close(cmd_safety_pipe[1]);
+	safety_close(lifeline_safety_pipe[1]);
+        safety_close(out_safety_pipe[1]);
 	
 	printf("Finished cleanup in client.\n");
         pthread_mutex_unlock(&cleanupMtx);
@@ -637,9 +647,12 @@ int main(int argc, char ** argv){
 
 	//especificar socket;
 	pthread_create(&connectionChecker,NULL,areYouStillThere,NULL);
+	pthread_setname_np(connectionChecker,"connectionChecker_remote_shell_client");
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
+	pthread_setname_np(outputPrinter,"outputPrinter_remote_shell_client");
 	if(!enable_tty_mode){
 		pthread_create(&errPrinter,NULL,getErr,NULL);
+		pthread_setname_np(errPrinter,"errPrinter_remote_shell_client");
 	}
 	tryConnect(&output_socket);
 
@@ -649,17 +662,15 @@ int main(int argc, char ** argv){
 	}
 	
 	pthread_create(&commandPrompt,NULL,command_line_thread,NULL);
-        pthread_create(&cleanupCrew,NULL,cleanup_crew,NULL);
-
+        pthread_setname_np(commandPrompt,"commandPrompt_remote_shell_client");
+	pthread_create(&cleanupCrew,NULL,cleanup_crew,NULL);
+	pthread_setname_np(cleanupCrew,"cleanupCrew_remote_shell_client");
 
         acessVarMtx32(&varMtx,&ping_alive,1,0);
         pthread_cond_signal(&pingCond);
 	printf("waiting for session end to reap cleanup crew thread!!\n");
         pthread_join(cleanupCrew,NULL);
 	printf("ending client.\n");
-	close(0);
-        close(1);
-        close(2);
 	return 0;
 }
 

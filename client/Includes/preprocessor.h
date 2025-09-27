@@ -1,11 +1,14 @@
+#define _GNU_SOURCE
 #include <ncurses.h>
 #include <stdio.h>
+#include <math.h>
 #include <arpa/inet.h>
 #include <pty.h>
 #include <utmp.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <sys/param.h>
 #include <pthread.h>
 #include <string.h>
 #include <unistd.h>

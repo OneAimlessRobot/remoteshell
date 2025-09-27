@@ -24,7 +24,6 @@ static pthread_mutex_t pingMtx= PTHREAD_MUTEX_INITIALIZER;
 /*static pthread_cond_t readyCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t readyMtx= PTHREAD_MUTEX_INITIALIZER;
 */
-u_int16_t dataSize;
 #define MAXNUMBEROFTRIES 10
 
 #define MAXTIMEOUTSECS 1
@@ -34,12 +33,14 @@ u_int16_t dataSize;
 #define MAXTIMEOUTUCMD 0
 
 #define MAXTIMEOUTCONS (60*5)
+//#define MAXTIMEOUTCONS 1
 #define MAXTIMEOUTUCONS 0
 
 #define MAXTIMEOUTPING 1
 #define MAXTIMEOUTUPING 0
 
 #define LINESIZE 1024
+#define DATASIZE 1024
 
 
 static pthread_t commandPrompt;
@@ -52,9 +53,27 @@ char errbuff[LINESIZE*10]={0};
 char line[LINESIZE]={0};
 char raw_line[LINESIZE]={0};
 
+static struct sockaddr_in server_address;
+static struct sockaddr_in server_ack_address;
+static struct sockaddr_in client_ack_address;
+
+u_int16_t server_ack_port=-1;
+u_int16_t client_ack_port=-1;
+
+//on example_pipe[2]...
+//write to example_pipe[1]
+//read from example_pipe[0]
+
+
+int err_safety_pipe[2];
+int out_safety_pipe[2];
+int cmd_safety_pipe[2];
+int lifeline_safety_pipe[2];
+
+
+
 int client_socket,lifeline_socket, output_socket;
 int err_socket;
-static struct sockaddr_in server_address;
 
 static void sigint_handler(int signal){
 
@@ -69,18 +88,152 @@ static void sigpipe_handler(int signal){
         raise(SIGINT+signal*0);
 }
 
+static void init_safety_pipes(void){
 
-static int64_t timedSend(int fd,char buff[],u_int64_t size,int secwait,int usecwait){
+
+if(!enable_tty_mode){
+
+	if(pipe2(err_safety_pipe,O_NONBLOCK)){
+
+		perror("Safety pipe on error message channel on client failed to open! Aborting");
+		exit(-1);
+	}
+	if((err_safety_pipe[0]=dup(err_safety_pipe[0]))<0){
+
+		perror("Safety pipe on error message channel on client failed to be duped on read end!!\nAborting");
+		exit(-1);
+
+
+	}
+	if((err_safety_pipe[1]=dup(err_safety_pipe[1]))<0){
+
+		perror("Safety pipe on error message channel on client failed to be duped on read end!!\nAborting");
+		exit(-1);
+
+
+	}
+	printf("just created error message channel safety pipe in client\n");
+}
+
+if(pipe2(out_safety_pipe,O_NONBLOCK)){
+
+	perror("Safety pipe on output message channel on client failed to be created!\nAborting");
+	exit(-1);
+}
+if((out_safety_pipe[0]=dup(out_safety_pipe[0]))<0){
+
+	perror("Safety pipe on output message channel on client failed to be duped on read end!!\nAborting");
+	exit(-1);
+
+
+}
+if((out_safety_pipe[1]=dup(out_safety_pipe[1]))<0){
+
+	perror("Safety pipe on output message channel on client failed to be duped on read end!!\nAborting");
+	exit(-1);
+
+
+}
+printf("just created output message channel safety pipe in client\n");
+
+if(pipe2(lifeline_safety_pipe,O_NONBLOCK)){
+
+	perror("Safety pipe on lifeline message channel on client failed to open! Aborting");
+	exit(-1);
+}
+
+if((lifeline_safety_pipe[0]=dup(lifeline_safety_pipe[0]))<0){
+
+	perror("Safety pipe on lifeline message channel on client failed to be duped on read end!!\nAborting");
+	exit(-1);
+
+
+}
+if((lifeline_safety_pipe[1]=dup(lifeline_safety_pipe[1]))<0){
+
+	perror("Safety pipe on lifeline message channel on client failed to be duped on read end!!\nAborting");
+	exit(-1);
+
+
+}
+printf("just created lifeline message channel safety pipe in client\n");
+
+if(pipe2(cmd_safety_pipe,O_NONBLOCK)){
+
+	perror("Safety pipe on cmd sending channel on client failed to open! Aborting");
+	exit(-1);
+}
+
+if((cmd_safety_pipe[0]=dup(cmd_safety_pipe[0]))<0){
+
+	perror("Safety pipe on cmd sending channel on client failed to be duped on read end!!\nAborting");
+	exit(-1);
+
+
+}
+if((cmd_safety_pipe[1]=dup(cmd_safety_pipe[1]))<0){
+
+	perror("Safety pipe on cmd sending channel on client failed to be duped on read end!!\nAborting");
+	exit(-1);
+
+
+}
+printf("just created command sending channel safety pipe in client\nSetting flags");
+
+}
+
+static void safety_close(int socket_descriptor, int safety_fd_write){
+
+
+	write(safety_fd_write,"x",1);
+	close(socket_descriptor);
+
+
+}
+static void build_ack_addresses(void){
+
+
+	getpeername(client_socket,(struct sockaddr*)&server_ack_address,&socklenvar[0]);
+	getpeername(client_socket,(struct sockaddr*)&client_ack_address,&socklenvar[0]);
+	server_ack_address.sin_port=server_ack_port;
+	client_ack_address.sin_port=client_ack_port;
+
+        if(bind(lifeline_socket,(struct sockaddr*) &client_ack_address,sizeof(client_ack_address))){
+
+	        perror("Nao foi possivel dar bind!!!\n");
+	        close(lifeline_socket);
+	        close(client_socket);
+	        exit(-1);
+	}
+	print_addr_aux("Address de acks de client (bind): ",&client_ack_address);
+	print_addr_aux("Address de acks de server (peer): ",&server_ack_address);
+}
+
+
+
+static int64_t timedSend(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
                 int iResult;
                 struct timeval tv;
                 fd_set wrfds;
                 FD_ZERO(&wrfds);
                 FD_SET(fd,&wrfds);
+                fd_set rfds;
+                char drain_buff[LINESIZE]={0};
+		FD_ZERO(&rfds);
+                FD_SET(safety_fd,&rfds);
                 tv.tv_sec=secwait;
                 tv.tv_usec=usecwait;
-                iResult=select(fd+1,(fd_set*)0,&wrfds,(fd_set*)0,&tv);
+                //printf("just read from pipe or not??\nSafety fd: %d\n\n",safety_fd);
+		iResult=select(MAX(safety_fd,fd)+1,&rfds,&wrfds,(fd_set*)0,&tv);
                 if(iResult>0){
-                return write(fd,buff,size);
+                while(read(safety_fd,drain_buff,1)>0){
+
+			printf("reading from safety fd in send function!!!\n");
+			close(safety_fd);
+			return -1;
+		}
+		//printf("just read from pipe or not\n");
+		return write(fd,buff,size);
                 }
                 else if(iResult){
 		return -1;
@@ -90,17 +243,28 @@ static int64_t timedSend(int fd,char buff[],u_int64_t size,int secwait,int usecw
 		}
 
 }
-static int64_t timedRead(int fd,char buff[],u_int64_t size,int secwait,int usecwait){
+
+static int64_t timedRead(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
                 int iResult;
                 struct timeval tv;
                 fd_set rfds;
-                FD_ZERO(&rfds);
+                char drain_buff[LINESIZE]={0};
+		FD_ZERO(&rfds);
                 FD_SET(fd,&rfds);
+                FD_SET(safety_fd,&rfds);
                 tv.tv_sec=secwait;
                 tv.tv_usec=usecwait;
-                iResult=select(fd+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
+                //printf("just read from pipe or not??\nSafety fd: %d\n\n",safety_fd);
+		iResult=select(MAX(safety_fd,fd)+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
                 if(iResult>0){
-                return read(fd,buff,size);
+                while(read(safety_fd,drain_buff,1)>0){
+
+			printf("reading from safety fd in read function!!!\n");
+			close(safety_fd);
+			return -1;
+		}
+		//printf("just read from pipe or not\n");
+		return read(fd,buff,size);
                 }
 		else if(iResult){
 		return -1;
@@ -111,25 +275,67 @@ static int64_t timedRead(int fd,char buff[],u_int64_t size,int secwait,int usecw
 
 
 }
+static int64_t timedSendUDP(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
+                int iResult;
+                struct timeval tv;
+                fd_set wrfds;
+                FD_ZERO(&wrfds);
+                FD_SET(fd,&wrfds);
+                fd_set rfds;
+                char drain_buff[LINESIZE]={0};
+                FD_ZERO(&rfds);
+                FD_SET(safety_fd,&rfds);
+                tv.tv_sec=secwait;
+                tv.tv_usec=usecwait;
+                //printf("just read from pipe or not??\nSafety fd: %d\n\n",safety_fd);
+                iResult=select(MAX(safety_fd,fd)+1,&rfds,&wrfds,(fd_set*)0,&tv);
+                if(iResult>0){
+                while(read(safety_fd,drain_buff,1)>0){
 
-static int64_t receiveServerOutput(int socket,char buff[],u_int64_t size,int secwait,int usecwait){
+                        printf("reading from safety fd in send function!!!\n");
+                        close(safety_fd);
+                        return -1;
+                }
+                //printf("just read from pipe or not\n");
+                return sendto(fd,buff,size,0,&server_ack_address,socklenvar[1]);
+                }
+                else if(iResult){
+                return -1;
+                }
+                else{
+                return 0;
+                }
+
+}
+static int64_t timedReadUDP(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
                 int iResult;
                 struct timeval tv;
                 fd_set rfds;
+                char drain_buff[LINESIZE]={0};
                 FD_ZERO(&rfds);
-                FD_SET(socket,&rfds);
+                FD_SET(fd,&rfds);
+                FD_SET(safety_fd,&rfds);
                 tv.tv_sec=secwait;
                 tv.tv_usec=usecwait;
-                iResult=select(socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
+                //printf("just read from pipe or not??\nSafety fd: %d\n\n",safety_fd);
+                iResult=select(MAX(safety_fd,fd)+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
                 if(iResult>0){
-                return recv(socket,buff,size,0);
+                while(read(safety_fd,drain_buff,1)>0){
+
+                        printf("reading from safety fd in read function!!!\n");
+                        close(safety_fd);
+                        return -1;
+                }
+                //printf("just read from pipe or not\n");
+                return recvfrom(fd,buff,size,0,&server_ack_address,&socklenvar[1]);
                 }
                 else if(iResult){
-		return -1;
-		}
-		else{
-		return 0;
-		}
+                return -1;
+                }
+                else{
+                return 0;
+                }
+
 
 }
 
@@ -139,7 +345,7 @@ static void initClient(int port, char* addr){
 	if(client_socket==-1){
 		raise(SIGINT);
 	}
-	lifeline_socket= socket(AF_INET,SOCK_STREAM,0);
+	lifeline_socket= socket(AF_INET,SOCK_DGRAM,0);
 	if(lifeline_socket==-1){
 		raise(SIGINT);
 	}
@@ -159,7 +365,7 @@ static void initClient(int port, char* addr){
 		flags= fcntl(client_socket,F_GETFL);
 	        flags |= O_NONBLOCK;
 	        fcntl(client_socket,F_SETFD,flags);
-
+		
 		flags= fcntl(lifeline_socket,F_GETFL);
 	        flags |= O_NONBLOCK;
 	        fcntl(lifeline_socket,F_SETFD,flags);
@@ -172,7 +378,7 @@ static void initClient(int port, char* addr){
 	
 	if(!enable_tty_mode&&!android_comp_mode_on){
 		flags= fcntl(err_socket,F_GETFL);
-	        flags |= O_NONBLOCK;
+	        //flags |= O_NONBLOCK;
 	        fcntl(err_socket,F_SETFD,flags);
 	}
 	signal(SIGINT,sigint_handler);
@@ -233,19 +439,19 @@ static void* getOutput(void* args){
         }
         pthread_mutex_unlock(&outMtx);
 	printf("Client's output printing message channel thread alive!\n");
-	memset(outbuff,0,dataSize);
+	memset(outbuff,0,DATASIZE);
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 	
 	pthread_cond_signal(&cmdCond);
 	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	int numread=1;
 	
-	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(acessVarMtx32(&varMtx,&output_socket,0,-1),outbuff,dataSize,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0)){
+	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(acessVarMtx32(&varMtx,&output_socket,0,-1),out_safety_pipe[0],outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0)){
 		if(!numread){
 			continue;
 		}
 		printf("%s",outbuff);
-		memset(outbuff,0,dataSize);
+		memset(outbuff,0,DATASIZE);
 	}
 	}
 	acessVarMtx32(&varMtx,&out_alive,0,0);
@@ -262,18 +468,18 @@ static void* getErr(void* args){
         }
         pthread_mutex_unlock(&errMtx);
 	printf("Client's error message printing channel thread alive!\n");
-	memset(errbuff,0,dataSize);
+	memset(errbuff,0,DATASIZE);
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 	
 	pthread_cond_signal(&cmdCond);
  	while(acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	int numread=1;
-	while(acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(acessVarMtx32(&varMtx,&err_socket,0,-1),errbuff,dataSize,MAXTIMEOUTCMD,MAXTIMEOUTUCMD))>0)){
+	while(acessVarMtx32(&varMtx,&err_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(acessVarMtx32(&varMtx,&err_socket,0,-1),err_safety_pipe[0],errbuff,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD))>0)){
 		if(!numread){
 			continue;
 		}
 		fprintf(stderr,"%s",errbuff);
-		memset(errbuff,0,dataSize);
+		memset(errbuff,0,DATASIZE);
 	}
 	}
 	acessVarMtx32(&varMtx,&err_alive,0,0);
@@ -303,8 +509,8 @@ static void* areYouStillThere(void* args){
 	
 	while(acessVarMtx32(&varMtx,&ping_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	int numread=1;
-	while(acessVarMtx32(&varMtx,&ping_alive,0,-1)&&acessVarMtx32(&varMtx,&ping_alive,0,-1)&&((numread=timedSend(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING))>0)){
-		if(timedRead(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING)<=0){
+	while(acessVarMtx32(&varMtx,&ping_alive,0,-1)&&acessVarMtx32(&varMtx,&ping_alive,0,-1)&&((numread=timedSendUDP(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),lifeline_safety_pipe[0],buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING))>0)){
+		if(timedReadUDP(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),lifeline_safety_pipe[0],buff,pingLength,MAXTIMEOUTPING,MAXTIMEOUTUPING)<=0){
 			break;
 		}
 		memset(buff,0,sizeof(buff));
@@ -314,7 +520,7 @@ static void* areYouStillThere(void* args){
 	}
 	acessVarMtx32(&varMtx,&ping_alive,0,0);
 	printf("Client's ping channel thread exiting!\n");
-        raise(SIGINT);
+	sigint_handler(0);
 	return args;
 
 }
@@ -344,7 +550,7 @@ static void* command_line_thread(void* args){
 			acessVarMtx32(&varMtx,&all_alive,0,0);
 			break;
 		}
-		timedSend(acessVarMtx32(&varMtx,&client_socket,0,-1),line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
+		timedSend(acessVarMtx32(&varMtx,&client_socket,0,-1),cmd_safety_pipe[0],line,LINESIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
 	}
 	
 	acessVarMtx32(&varMtx,&cmd_alive,0,0);
@@ -388,16 +594,16 @@ void* cleanup_crew(void*args){
                 pthread_join(connectionChecker,NULL);
         }
 	        if(!enable_tty_mode){
-                close(acessVarMtx32(&varMtx,&err_socket,0,-1));
+                safety_close(acessVarMtx32(&varMtx,&err_socket,0,-1),err_safety_pipe[1]);
                 fflush(stderr);
         }
 
         printf("Cleanup crew called in client. Closing file descriptors and sockets\n");
         fflush(stdout);
-        close(acessVarMtx32(&varMtx,&client_socket,0,-1));
-        close(acessVarMtx32(&varMtx,&lifeline_socket,0,-1));
-        close(acessVarMtx32(&varMtx,&output_socket,0,-1));
-
+        safety_close(acessVarMtx32(&varMtx,&client_socket,0,-1),cmd_safety_pipe[1]);
+	safety_close(acessVarMtx32(&varMtx,&lifeline_socket,0,-1),lifeline_safety_pipe[1]);
+        safety_close(acessVarMtx32(&varMtx,&output_socket,0,-1),out_safety_pipe[1]);
+	
 	printf("Finished cleanup in client.\n");
         pthread_mutex_unlock(&cleanupMtx);
         return args;
@@ -406,27 +612,35 @@ void* cleanup_crew(void*args){
 
 int main(int argc, char ** argv){
 
-	if(argc!=3){
+	if(argc!=4){
 
-		printf("Utilizacao correta: arg1: ip de server a connectar.\narg2: porta de server\n");
+		printf("Utilizacao correta: arg1: ip de server a connectar.\narg2: porta de server\narg3: porta de client para acks udp\n");
 		exit(-1);
 	}
-	char buff2[10]={0};
+
+	init_safety_pipes();
+	client_ack_port=atoi(argv[3]);
+	char buff2[DATASIZE]={0};
 	initClient(atoi(argv[1]),argv[2]);
 	tryConnect(&client_socket);
-	receiveServerOutput(client_socket,buff2,10,MAXTIMEOUTCONS,MAXTIMEOUTUCONS);
-	sscanf(buff2,"%hu %d",&dataSize,&enable_tty_mode);
-	printf("Datasize: %hu\nEnable tty mode: %d\n",dataSize,enable_tty_mode);
-	send(client_socket,ping,strlen(ping),0);
-	printf("Send de ping feito! %s\n",ping);
-	
+	timedRead(client_socket,cmd_safety_pipe[0],buff2,DATASIZE,MAXTIMEOUTCONS,MAXTIMEOUTUCONS);
+	sscanf(buff2,"%d %hu",&enable_tty_mode,&server_ack_port);
+	server_ack_port=ntohs(server_ack_port);
+	printf("Enable tty mode: %d\nServer ack port: %hu\n",enable_tty_mode,server_ack_port);
+	char buff3[DATASIZE]={0};
+	snprintf(buff3,sizeof(buff3)-1,"%d",htons(client_ack_port));
+	//snprintf(buff3,sizeof(buff3)-1,"%d",client_ack_port);
+	send(client_socket,buff3,DATASIZE,0);
+	printf("Send de ping feito!\nPorta enviada: %hu\nhtonl de porta enviada! %hu\nntohl de porta enviada %hu\n",client_ack_port,htons(client_ack_port),ntohs(client_ack_port));
+
+	build_ack_addresses();
+
 	//especificar socket;
 	pthread_create(&connectionChecker,NULL,areYouStillThere,NULL);
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
 	if(!enable_tty_mode){
 		pthread_create(&errPrinter,NULL,getErr,NULL);
 	}
-	tryConnect(&lifeline_socket);
 	tryConnect(&output_socket);
 
 	

@@ -35,6 +35,7 @@
 #include "atomicOps.h"
 #include "doublelistcomp.h"
 #include "hashtablecomp.h"
+#include "socketops.h"
 #define SERVERLOGSX 50
 #define SERVERLOGSY 0
 

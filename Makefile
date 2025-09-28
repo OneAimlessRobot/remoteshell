@@ -7,7 +7,7 @@ XTRAFUN_RESDIR= ./xtrafun/resources
 
 CLIENT_INCLUDE= ./client/Includes
 CLIENT_SOURCES= ./client/Sources ./client
-CLIENT_RESDIR= ./clientresources
+CLIENT_RESDIR= ./client/resources
 CLIENT_BINARY= ./client/client.exe
 
 
@@ -22,9 +22,9 @@ CURRDIR=echo `pwd`
 CC= clang
 DEPFLAGS= -MP -MD
 
-CFLAGS= -fsanitize=thread -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -gdwarf-4 $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)
+#CFLAGS= -fsanitize=thread -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -gdwarf-4 $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)
 #CFLAGS= -fsanitize=address -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -gdwarf-4 $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)
-#CFLAGS= -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -gdwarf-4 $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)
+CFLAGS= -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -gdwarf-4 $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)
 
 SERVER_SOURCEFILES=$(foreach D,$(SERVER_SOURCES), $(wildcard $(D)/*.c))
 
@@ -70,7 +70,7 @@ client: $(CLIENT_BINARY)
 $(SERVER_BINARY): $(SERVER_OBJECTS)  $(XTRAFUN_OBJECTS)
 	$(CC) -g -v  $(CFLAGS) -o  $@ $^ $(SERVER_RESOURCEFILES)  $(LDLIBS)
 
-$(CLIENT_BINARY): $(SERVER_OBJECTS) $(XTRAFUN_OBJECTS)
+$(CLIENT_BINARY): $(CLIENT_OBJECTS) $(XTRAFUN_OBJECTS)
 	$(CC) -g -v  $(CFLAGS) -o  $@ $^ $(SERVER_RESOURCEFILES)  $(LDLIBS)
 
 

@@ -1,10 +1,9 @@
 #include "Includes/preprocessor.h"
 static const char* ping= "gimmemore!";
-
+static char* module_name= "CLIENT";
 static int enable_tty_mode=0;
 static const u_int64_t android_comp_mode_on=0;
-static const u_int32_t one_for_detach_zero_for_join=1;
-//static int32_t all_ready=1;
+static const u_int32_t one_for_detach_zero_for_join=0;
 static int32_t all_alive=1;
 static int32_t err_alive=0;
 static int32_t out_alive=0;
@@ -18,26 +17,9 @@ static pthread_cond_t errCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t errMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t outCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
-#define MAXNUMBEROFTRIES 10
-
-
-#define MAXTIMEOUTCONS 1
-//#define MAXTIMEOUTCONS 1
-#define MAXTIMEOUTUCONS 0
-
-#define MAXTIMEOUTSECS (60*5)
-#define MAXTIMEOUTUSECS 0
-
-#define MAXTIMEOUTCMD (60*5)
-#define MAXTIMEOUTUCMD 0
-
-
-#define LINESIZE 1024
-#define DATASIZE 1024
 
 
 static pthread_t commandPrompt;
-static pthread_t cleanupCrew;
 static pthread_t outputPrinter;
 static pthread_t errPrinter;
 char outbuff[LINESIZE*10]={0};
@@ -62,7 +44,7 @@ int err_socket;
 
 static void sigint_handler(int signal){
 
-        printf("sigint was called in server!!\n");
+        printf("sigint was called in client!!\n");
         acessVarMtx32(&varMtx,&all_alive,0,0*signal);
         pthread_cond_signal(&exitCond);
 }
@@ -72,155 +54,16 @@ static void sigpipe_handler(int signal){
         printf("sigpipe was called in server!!\n");
         raise(SIGINT+signal*0);
 }
-
 static void init_safety_pipes(void){
 
-
 if(!enable_tty_mode){
-
-	if(pipe2(err_safety_pipe,O_NONBLOCK)){
-
-		perror("Safety pipe on error message channel on client failed to open! Aborting");
-		exit(-1);
-	}
-	if((err_safety_pipe[0]=dup(err_safety_pipe[0]))<0){
-
-		perror("Safety pipe on error message channel on client failed to be duped on read end!!\nAborting");
-		exit(-1);
-
-
-	}
-	if((err_safety_pipe[1]=dup(err_safety_pipe[1]))<0){
-
-		perror("Safety pipe on error message channel on client failed to be duped on read end!!\nAborting");
-		exit(-1);
-
-
-	}
-	printf("just created error message channel safety pipe in client\n");
+        create_safety_pipe(err_safety_pipe,"Error  safety pipe",module_name,O_NONBLOCK);
 }
 
-if(pipe2(out_safety_pipe,O_NONBLOCK)){
-
-	perror("Safety pipe on output message channel on client failed to be created!\nAborting");
-	exit(-1);
-}
-if((out_safety_pipe[0]=dup(out_safety_pipe[0]))<0){
-
-	perror("Safety pipe on output message channel on client failed to be duped on read end!!\nAborting");
-	exit(-1);
-
-
-}
-if((out_safety_pipe[1]=dup(out_safety_pipe[1]))<0){
-
-	perror("Safety pipe on output message channel on client failed to be duped on read end!!\nAborting");
-	exit(-1);
-
-
-}
-printf("just created output message channel safety pipe in client\n");
-
-
-if(pipe2(cmd_safety_pipe,O_NONBLOCK)){
-
-	perror("Safety pipe on cmd sending channel on client failed to open! Aborting");
-	exit(-1);
+create_safety_pipe(out_safety_pipe,"Output printing safety pipe",module_name,O_NONBLOCK);
+create_safety_pipe(cmd_safety_pipe,"command receiving safety pipe",module_name,O_NONBLOCK);
 }
 
-if((cmd_safety_pipe[0]=dup(cmd_safety_pipe[0]))<0){
-
-	perror("Safety pipe on cmd sending channel on client failed to be duped on read end!!\nAborting");
-	exit(-1);
-
-
-}
-if((cmd_safety_pipe[1]=dup(cmd_safety_pipe[1]))<0){
-
-	perror("Safety pipe on cmd sending channel on client failed to be duped on read end!!\nAborting");
-	exit(-1);
-
-
-}
-printf("just created command sending channel safety pipe in client\nSetting flags");
-
-}
-
-static void safety_close(char* prompt_to_show,int safety_fd_write){
-
-        printf("We are trying to close the fd of the following description safely:\nWe are in the client\n%s\n",prompt_to_show);
-        write(safety_fd_write,"x",1);
-	printf("Okay! We wrote the closing byte into the safety socket of the following description:\nWe are in the client\n%s\n",prompt_to_show);
-}
-
-
-
-static int64_t timedSend(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
-                int iResult;
-                struct timeval tv;
-                fd_set wrfds;
-                FD_ZERO(&wrfds);
-                FD_SET(fd,&wrfds);
-                fd_set rfds;
-                char drain_buff[LINESIZE]={0};
-		FD_ZERO(&rfds);
-                FD_SET(safety_fd,&rfds);
-                tv.tv_sec=secwait;
-                tv.tv_usec=usecwait;
-                //printf("just read from pipe or not??\nSafety fd: %d\n\n",safety_fd);
-		iResult=select(MAX(safety_fd,fd)+1,&rfds,&wrfds,(fd_set*)0,&tv);
-                if(iResult>0){
-                while(read(safety_fd,drain_buff,1)>0){
-
-			printf("reading from safety fd in the client's timedSend function!!! %s\n",drain_buff);
-                        close(safety_fd);
-                        close(fd);
-                        return -1;
-		}
-		//printf("just read from pipe or not\n");
-		return write(fd,buff,size);
-                }
-                else if(iResult){
-		return -1;
-		}
-		else{
-		return 0;
-		}
-
-}
-
-static int64_t timedRead(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
-                int iResult;
-                struct timeval tv;
-                fd_set rfds;
-                char drain_buff[LINESIZE]={0};
-		FD_ZERO(&rfds);
-                FD_SET(fd,&rfds);
-                FD_SET(safety_fd,&rfds);
-                tv.tv_sec=secwait;
-                tv.tv_usec=usecwait;
-                //printf("just read from pipe or not??\nSafety fd: %d\n\n",safety_fd);
-		iResult=select(MAX(safety_fd,fd)+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
-                if(iResult>0){
-                while(read(safety_fd,drain_buff,1)>0){
-
-			printf("reading from safety fd in the client's timedRead function!!! %s\n",drain_buff);
-                        close(safety_fd);
-			close(fd);
-			return -1;
-		}
-		//printf("just read from pipe or not\n");
-		return read(fd,buff,size);
-                }
-		else if(iResult){
-		return -1;
-		}
-		else{
-		return 0;
-		}
-
-
-}
 
 static void initClient(int port, char* addr){
 
@@ -242,18 +85,18 @@ static void initClient(int port, char* addr){
        	if(!android_comp_mode_on){
 
 		flags= fcntl(client_socket,F_GETFL);
-	        flags |= O_NONBLOCK;
+	        //flags |= O_NONBLOCK;
 	        fcntl(client_socket,F_SETFD,flags);
 
 		flags= fcntl(output_socket,F_GETFL);
-	        flags |= O_NONBLOCK;
+	        //flags |= O_NONBLOCK;
 	        fcntl(output_socket,F_SETFD,flags);
 	}
 
 	
 	if(!enable_tty_mode&&!android_comp_mode_on){
 		flags= fcntl(err_socket,F_GETFL);
-	        flags |= O_NONBLOCK;
+	        //flags |= O_NONBLOCK;
 	        fcntl(err_socket,F_SETFD,flags);
 	}
 	signal(SIGINT,sigint_handler);
@@ -398,9 +241,8 @@ static void* command_line_thread(void* args){
 	return args;
 }
 
-void* cleanup_crew(void*args){
+void cleanup_crew(void){
 
-        pthread_mutex_lock(&cleanupMtx);
         pthread_mutex_lock(&exitMtx);
         while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
 
@@ -411,14 +253,17 @@ void* cleanup_crew(void*args){
         printf("Cleanup crew called in client\n");
         printf("Cleanup crew called in client. Closing file descriptors and sockets\n");
         fflush(stdout);
-        safety_close("Command sending socket",cmd_safety_pipe[1]);
-	safety_close("Output message receiving socket",out_safety_pipe[1]);
+        if(!enable_tty_mode){
+                fflush(stderr);
+        }
 	printf("Cleanup crew called in client. About to join threads which are online\n");
         if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)||!acessVarMtx32(&varMtx,&all_alive,0,-1)){
                 printf("Reaping client cmdline thread!!\n");
 		if(!one_for_detach_zero_for_join){
-	                pthread_join(commandPrompt,NULL);
-        	}
+	                safety_close("Command sending socket",cmd_safety_pipe[1]);
+			pthread_join(commandPrompt,NULL);
+        		close(client_socket);
+		}
 		else{
 
 		        pthread_detach(commandPrompt);
@@ -428,8 +273,10 @@ void* cleanup_crew(void*args){
         if(!acessVarMtx32(&varMtx,&out_alive,0,-1)||!acessVarMtx32(&varMtx,&all_alive,0,-1)){
                 printf("Reaping client output writter thread!!\n");
                 if(!one_for_detach_zero_for_join){
-	                pthread_join(outputPrinter,NULL);
-        	}
+	                safety_close("Output message receiving socket",out_safety_pipe[1]);
+			pthread_join(outputPrinter,NULL);
+        		close(output_socket);
+		}
 		else{
 		        pthread_detach(outputPrinter);
         	}
@@ -439,23 +286,18 @@ void* cleanup_crew(void*args){
 		if(!acessVarMtx32(&varMtx,&err_alive,0,-1)||!acessVarMtx32(&varMtx,&all_alive,0,-1)){
                 	printf("Reaping client error printer thread!!\n");
                 	if(!one_for_detach_zero_for_join){
-	                	pthread_join(errPrinter,NULL);
-        		}
+	                	safety_close("Error sending socket",err_safety_pipe[1]);
+				pthread_join(errPrinter,NULL);
+        			close(err_socket);
+			}
 			else{
 				pthread_detach(errPrinter);
 			}
 		}
 	}
-	        if(!enable_tty_mode){
-                safety_close("Error message receiving socket",err_safety_pipe[1]);
-                fflush(stderr);
-        }
 
 
 	printf("Finished cleanup in client.\n");
-        pthread_mutex_unlock(&cleanupMtx);
-        return args;
-
 }
 
 int main(int argc, char ** argv){
@@ -471,7 +313,8 @@ int main(int argc, char ** argv){
 	initClient(atoi(argv[1]),argv[2]);
 	tryConnect(&client_socket);
 	timedRead(client_socket,cmd_safety_pipe[0],buff2,DATASIZE,MAXTIMEOUTCONS,MAXTIMEOUTUCONS);
-	
+	sscanf(buff2,"%d",&enable_tty_mode);
+	printf("enable_tty_mode: %d\n",enable_tty_mode);
 	//especificar socket;
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
 	pthread_setname_np(outputPrinter,"outputPrinter_remote_shell_client");
@@ -496,11 +339,8 @@ int main(int argc, char ** argv){
 	
 	pthread_create(&commandPrompt,NULL,command_line_thread,NULL);
         pthread_setname_np(commandPrompt,"commandPrompt_remote_shell_client");
-	pthread_create(&cleanupCrew,NULL,cleanup_crew,NULL);
-	pthread_setname_np(cleanupCrew,"cleanupCrew_remote_shell_client");
 
-        printf("waiting for session end to reap cleanup crew thread!!\n");
-        pthread_join(cleanupCrew,NULL);
+	cleanup_crew();
 	printf("ending client.\n");
 	return 0;
 }

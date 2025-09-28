@@ -25,17 +25,18 @@
 #include <netinet/in.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include "../../xtrafun/IncludesauxFuncs.h"
-#include "../../xtrafun/Includesnodes.h"
-#include "../../xtrafun/Includescomparator.h"
-#include "../../xtrafun/Includeshasher.h"
-#include "../../xtrafun/Includescmdstruct.h"
-#include "../../xtrafun/Includesdoublelist.h"
-#include "../../xtrafun/IncludesstackList.h"
-#include "../../xtrafun/Includesdliterator.h"
-#include "../../xtrafun/IncludesatomicOps.h"
-#include "../../xtrafun/Includesdoublelistcomp.h"
-#include "../../xtrafun/Includeshashtablecomp.h"
+#include "../../xtrafun/Includes/auxFuncs.h"
+#include "../../xtrafun/Includes/nodes.h"
+#include "../../xtrafun/Includes/comparator.h"
+#include "../../xtrafun/Includes/hasher.h"
+#include "../../xtrafun/Includes/cmdstruct.h"
+#include "../../xtrafun/Includes/doublelist.h"
+#include "../../xtrafun/Includes/stackList.h"
+#include "../../xtrafun/Includes/dliterator.h"
+#include "../../xtrafun/Includes/atomicOps.h"
+#include "../../xtrafun/Includes/doublelistcomp.h"
+#include "../../xtrafun/Includes/hashtablecomp.h"
+#include "../../xtrafun/Includes/socketops.h"
 #define SERVERLOGSX 50
 #define SERVERLOGSY 0
 

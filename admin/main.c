@@ -1,6 +1,5 @@
 #include "../xtrafun/Includes/preprocessor.h"
 
-static const char* ping= "gimmemore!";
 static int32_t all_alive=1;
 static int32_t out_alive=0;
 static int32_t cmd_alive=0;
@@ -23,7 +22,6 @@ int master_fd=-1;
 int slave_fd=-1;
 int pid=0;
 int32_t server_socket,client_socket,output_socket;
-char line[DATASIZE]={0};
 char raw_line[DATASIZE]={0};
 char  outbuff[DATASIZE]={0};
 
@@ -137,11 +135,7 @@ static void* writeOutput(void* args){
 	pthread_cond_signal(&cmdCond);
 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&acessVarMtx32(&varMtx,&out_alive,0,-1)){
 		int numread=1;
-		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(master_fd,outbuff,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTCMD))>=0)){
-		if(!numread){
-			printf("Nothing read\n");
-			continue;
-		}
+		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(master_fd,outbuff,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTCMD))>0)){
 		if(timedSend(output_socket,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS)<=0){
 			break;
 		}
@@ -167,28 +161,19 @@ static void* command_prompt_thread(void* args){
 	pthread_mutex_unlock(&cmdMtx);
 
 	printf("Server's command receiving channel thread about to start!\n");
-	char buff[strlen(ping)+1];
-	
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	memset(raw_line,0,sizeof(raw_line));
-	memset(line,0,sizeof(line));
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&(timedRead(client_socket,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)>0)){
 
-	memset(buff,0,strlen(ping)+1);
-	memcpy(buff,ping,strlen(ping));
-	memcpy(line,raw_line,strlen(raw_line)-1);
 	write(master_fd,raw_line,strlen(raw_line));
-	printf("Command received: raw line: |%s|\nActual line: |%s|\n",raw_line,line);
-	
-	printf("O valor deste caracter é: %d\n",line[(strlen(line))-1]);
-	if(!strncmp(line, "exit",strlen("exit"))&&((strlen(line))==strlen("exit"))){
+	if(!strncmp(raw_line, "exit",strlen("exit"))&&((strlen(raw_line)-1)==strlen("exit"))){
 
 		printf("The server got orders to exit!\n");
 		acessVarMtx32(&varMtx,&all_alive,0,0);
 		break;
 
 	}
-	memset(line,0,sizeof(line));
+	memset(raw_line,0,sizeof(raw_line));
 	}
 	}
 	acessVarMtx32(&varMtx,&cmd_alive,0,0);
@@ -253,7 +238,7 @@ int main(int argc, char ** argv){
 	long flags= 0;
 	if(!android_comp_mode_on){
 		flags=fcntl(master_fd,F_GETFL);
-		flags |= O_NONBLOCK|O_SYNC;
+		//flags |= O_NONBLOCK;
         	fcntl(master_fd,F_SETFD,flags);
 	}
 	pid=fork();

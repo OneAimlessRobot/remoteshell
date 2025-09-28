@@ -1,5 +1,4 @@
 #include "Includes/preprocessor.h"
-static const char* ping= "gimmemore!";
 static const u_int64_t android_comp_mode_on=0;
 static int32_t all_alive=1;
 static int32_t out_alive=0;
@@ -16,7 +15,6 @@ static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_t commandPrompt;
 static pthread_t outputPrinter;
 char outbuff[DATASIZE*10]={0};
-char line[DATASIZE]={0};
 char raw_line[DATASIZE]={0};
 
 static struct sockaddr_in server_address;
@@ -53,11 +51,11 @@ static void initClient(int port, char* addr){
        	if(!android_comp_mode_on){
 
 		flags= fcntl(client_socket,F_GETFL);
-	        //flags |= O_NONBLOCK;
+	        flags |= O_NONBLOCK;
 	        fcntl(client_socket,F_SETFD,flags);
 
 		flags= fcntl(output_socket,F_GETFL);
-	        //flags |= O_NONBLOCK;
+	        flags |= O_NONBLOCK;
 	        fcntl(output_socket,F_SETFD,flags);
 
 	}
@@ -127,10 +125,7 @@ static void* getOutput(void* args){
 	int numread=1;
 	
 	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(output_socket,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0)){
-		if(!numread){
-			continue;
-		}
-		printf("%s",outbuff);
+		dprintf(1,"%s",outbuff);
 		memset(outbuff,0,DATASIZE);
 	}
 	}
@@ -148,33 +143,23 @@ static void* command_line_thread(void* args){
 	}
 	pthread_mutex_unlock(&cmdMtx);
 	printf("Client's command sending channel thread alive!\n");
-	char buff[strlen(ping)+1];
 	int numread=0;
-	memset(line,0,DATASIZE);
 	memset(raw_line,0,DATASIZE);
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 
 		memset(raw_line,0,DATASIZE);
-		memset(line,0,DATASIZE);
-		memset(buff,0,strlen(ping)+1);
 		if((numread=timedRead(0,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD))<=0){
 			if(!numread){
-				printf("Nothing written\n");
 				continue;
 			}
 			else{
 				raise(SIGINT);
 			}
 		}
-		memcpy(line,raw_line,strlen(raw_line));
-		line[strlen(line)-1]='\n';
-		printf("The command (clients perspective): |%s|\nThe raw line: |%s|\n",line,raw_line);
-		if(!strncmp(line, "exit",strlen("exit"))&&((strlen(raw_line))==strlen("exit"))){
-			raise(SIGINT);
+		if((timedSend(client_socket,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)<0)){
 			break;
 		}
-		if((timedSend(client_socket,line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)<0)){
-			raise(SIGINT);
+		if(!strncmp(raw_line, "exit",strlen("exit"))&&((strlen(raw_line)-1)==strlen("exit"))){
 			break;
 		}
 	}

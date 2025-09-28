@@ -57,7 +57,6 @@ SERVER_DEPFILES= $(patsubst %.c,%.d,$(SERVER_SOURCEFILES))
 XTRAFUN_DEPFILES= $(patsubst %.c,%.d,$(XTRAFUN_SOURCEFILES))
 
 
-all: $(server) $(client)
 
 server: $(SERVER_BINARY)
 	echo $(LDLIBS)

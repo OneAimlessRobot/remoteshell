@@ -135,8 +135,14 @@ static void* writeOutput(void* args){
 	pthread_cond_signal(&cmdCond);
 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&acessVarMtx32(&varMtx,&out_alive,0,-1)){
 		int numread=1;
-		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(master_fd,outbuff,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTCMD))>0)){
-		if(timedSend(output_socket,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS)<=0){
+		int numsent=1;
+		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+		numread=timedRead(master_fd,outbuff,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTCMD);
+		if(numread<0){
+			break;
+		}
+		numread=timedSend(output_socket,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS);
+		if(numsent<0){
 			break;
 		}
 		memset(outbuff,0,DATASIZE);
@@ -163,9 +169,19 @@ static void* command_prompt_thread(void* args){
 	printf("Server's command receiving channel thread about to start!\n");
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	memset(raw_line,0,sizeof(raw_line));
-	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&(timedRead(client_socket,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)>0)){
+	int numread=0;
+	int numwritten=0;
+	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	numread=timedRead(client_socket,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
+	if(numread<0){
 
-	write(master_fd,raw_line,strlen(raw_line));
+		break;
+	}
+	numwritten=write(master_fd,raw_line,strlen(raw_line));
+	if(numwritten<0){
+
+		break;
+	}
 	if(!strncmp(raw_line, "exit",strlen("exit"))&&((strlen(raw_line)-1)==strlen("exit"))){
 
 		printf("The server got orders to exit!\n");

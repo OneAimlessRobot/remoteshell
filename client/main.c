@@ -122,12 +122,15 @@ static void* getOutput(void* args){
 	
 	pthread_cond_signal(&cmdCond);
 	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-	int numread=1;
-	
-	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)&&((numread=timedRead(output_socket,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS))>0)){
-		dprintf(1,"%s",outbuff);
-		memset(outbuff,0,DATASIZE);
-	}
+		int numread=1;
+		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+			numread=timedRead(output_socket,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS);
+			if(numread<=0){
+				break;
+			}
+			dprintf(1,"%s",outbuff);
+			memset(outbuff,0,DATASIZE);
+		}
 	}
 	acessVarMtx32(&varMtx,&out_alive,0,0);
 	printf("Client's output printing message channel thread exiting!\n");
@@ -144,11 +147,12 @@ static void* command_line_thread(void* args){
 	pthread_mutex_unlock(&cmdMtx);
 	printf("Client's command sending channel thread alive!\n");
 	int numread=0;
+	int numsent=0;
 	memset(raw_line,0,DATASIZE);
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-
 		memset(raw_line,0,DATASIZE);
-		if((numread=timedRead(0,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD))<=0){
+		numread=timedRead(0,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
+		if(numread<=0){
 			if(!numread){
 				continue;
 			}
@@ -156,7 +160,8 @@ static void* command_line_thread(void* args){
 				raise(SIGINT);
 			}
 		}
-		if((timedSend(client_socket,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD)<0)){
+		numsent=timedSend(client_socket,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
+		if(numsent<0){
 			break;
 		}
 		if(!strncmp(raw_line, "exit",strlen("exit"))&&((strlen(raw_line)-1)==strlen("exit"))){

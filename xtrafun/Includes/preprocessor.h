@@ -1,14 +1,13 @@
 #define _GNU_SOURCE
 #include <ncurses.h>
 #include <stdio.h>
-#include <math.h>
 #include <arpa/inet.h>
+#include <sys/param.h>
 #include <pty.h>
 #include <utmp.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <sys/param.h>
 #include <pthread.h>
 #include <string.h>
 #include <unistd.h>
@@ -25,17 +24,17 @@
 #include <netinet/in.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include "../../xtrafun/IncludesauxFuncs.h"
-#include "../../xtrafun/Includesnodes.h"
-#include "../../xtrafun/Includescomparator.h"
-#include "../../xtrafun/Includeshasher.h"
-#include "../../xtrafun/Includescmdstruct.h"
-#include "../../xtrafun/Includesdoublelist.h"
-#include "../../xtrafun/IncludesstackList.h"
-#include "../../xtrafun/Includesdliterator.h"
-#include "../../xtrafun/IncludesatomicOps.h"
-#include "../../xtrafun/Includesdoublelistcomp.h"
-#include "../../xtrafun/Includeshashtablecomp.h"
+#include "auxFuncs.h"
+#include "nodes.h"
+#include "comparator.h"
+#include "hasher.h"
+#include "cmdstruct.h"
+#include "doublelist.h"
+#include "stackList.h"
+#include "dliterator.h"
+#include "atomicOps.h"
+#include "doublelistcomp.h"
+#include "hashtablecomp.h"
 #define SERVERLOGSX 50
 #define SERVERLOGSY 0
 

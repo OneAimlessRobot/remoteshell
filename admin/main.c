@@ -10,7 +10,6 @@ static pthread_cond_t cmdCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t cmdMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t outCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
-static const u_int64_t android_comp_mode_on=0;
 
 static pthread_t outputWritter;
 static pthread_t commandPrompt;
@@ -83,9 +82,7 @@ static void initServer(char* address,int port){
 		close(server_socket);
 		exit(-1);
 	}
-	if(android_comp_mode_on){
-		fcntl(server_socket,F_SETFL,O_NONBLOCK);
-	}
+	fcntl(server_socket,F_SETFL,O_NONBLOCK);
 	init_addr(&server_address,address,port);
 	if(bind(server_socket,(struct sockaddr*) &server_address,sizeof(server_address))){
 
@@ -106,15 +103,13 @@ void setupConnections(void){
 
 	acceptConnection(&output_socket);
 	long flags=0;
-	if(!android_comp_mode_on){
-		flags= fcntl(client_socket,F_GETFL);
-		flags |= O_NONBLOCK;
-	        fcntl(client_socket,F_SETFD,flags);
+	flags= fcntl(client_socket,F_GETFL);
+	flags |= O_NONBLOCK;
+        fcntl(client_socket,F_SETFL,flags);
 
-		flags= fcntl(output_socket,F_GETFL);
-		flags |= O_NONBLOCK;
-	        fcntl(output_socket,F_SETFD,flags);
-	}
+	flags= fcntl(output_socket,F_GETFL);
+	flags |= O_NONBLOCK;
+        fcntl(output_socket,F_SETFL,flags);
 
 }
 
@@ -252,11 +247,9 @@ int main(int argc, char ** argv){
 	
 	printf("Pty name: %s\n",pty_name);
 	long flags= 0;
-	if(!android_comp_mode_on){
-		flags=fcntl(master_fd,F_GETFL);
-		//flags |= O_NONBLOCK;
-        	fcntl(master_fd,F_SETFD,flags);
-	}
+	flags=fcntl(master_fd,F_GETFL);
+	//flags |= O_NONBLOCK;
+        fcntl(master_fd,F_SETFL,flags);
 	pid=fork();
 	switch(pid){
 		case -1:

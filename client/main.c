@@ -1,5 +1,4 @@
 #include "Includes/preprocessor.h"
-static const u_int64_t android_comp_mode_on=0;
 static int32_t all_alive=1;
 static int32_t out_alive=0;
 static int32_t cmd_alive=0;
@@ -48,17 +47,14 @@ static void initClient(int port, char* addr){
 		raise(SIGINT);
 	}
 	long flags=0;
-       	if(!android_comp_mode_on){
+       	flags= fcntl(client_socket,F_GETFL);
+        flags |= O_NONBLOCK;
+        fcntl(client_socket,F_SETFL,flags);
 
-		flags= fcntl(client_socket,F_GETFL);
-	        flags |= O_NONBLOCK;
-	        fcntl(client_socket,F_SETFD,flags);
+	flags= fcntl(output_socket,F_GETFL);
+        flags |= O_NONBLOCK;
+        fcntl(output_socket,F_SETFL,flags);
 
-		flags= fcntl(output_socket,F_GETFL);
-	        flags |= O_NONBLOCK;
-	        fcntl(output_socket,F_SETFD,flags);
-
-	}
 	signal(SIGINT,sigint_handler);
 	signal(SIGPIPE,sigpipe_handler);
 	server_address.sin_family=AF_INET;

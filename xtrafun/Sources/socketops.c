@@ -12,14 +12,14 @@ void safety_close(/*int fd_to_close,*/char* prompt_to_show,int safety_fd_write){
 }
 
 
-int64_t timedSend(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
+int64_t timedSendSafe(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
                 int iResult;
                 struct timeval tv;
                 fd_set wrfds;
                 FD_ZERO(&wrfds);
                 FD_SET(fd,&wrfds);
                 fd_set rfds;
-                char drain_buff[LINESIZE]={0};
+                char drain_buff[DATASIZE]={0};
                 FD_ZERO(&rfds);
                 FD_SET(safety_fd,&rfds);
                 tv.tv_sec=secwait;
@@ -46,11 +46,11 @@ int64_t timedSend(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,in
 }
 
 
-int64_t timedRead(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
+int64_t timedReadSafe(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait){
                 int iResult;
                 struct timeval tv;
                 fd_set rfds;
-                char drain_buff[LINESIZE]={0};
+                char drain_buff[DATASIZE]={0};
                 FD_ZERO(&rfds);
                 FD_SET(fd,&rfds);
                 FD_SET(safety_fd,&rfds);
@@ -67,6 +67,54 @@ int64_t timedRead(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,in
                 }
                 //printf("just read from pipe or not\n");
                 return read(fd,buff,size);
+                }
+                else if(iResult){
+                return -1;
+                }
+                else{
+                return 0;
+                }
+
+
+}
+
+int64_t timedSend(int fd,char buff[],u_int64_t size,int secwait,int usecwait){
+                int iResult;
+                struct timeval tv;
+                fd_set wrfds;
+                FD_ZERO(&wrfds);
+                FD_SET(fd,&wrfds);
+                tv.tv_sec=secwait;
+                tv.tv_usec=usecwait;
+                //printf("just read from pipe or not??\nSafety fd: %d\n\n",safety_fd);
+                iResult=select(fd+1,(fd_set*)0,&wrfds,(fd_set*)0,&tv);
+                if(iResult>0){
+                //printf("just read from pipe or not\n");
+                return write(fd,buff,size);
+                }
+                else if(iResult){
+                return -1;
+                }
+                else{
+                return 0;
+                }
+
+}
+
+
+int64_t timedRead(int fd,char buff[],u_int64_t size,int secwait,int usecwait){
+                int iResult;
+                struct timeval tv;
+                fd_set rfds;
+                FD_ZERO(&rfds);
+                FD_SET(fd,&rfds);
+                tv.tv_sec=secwait;
+                tv.tv_usec=usecwait;
+                //printf("just read from pipe or not??\nSafety fd: %d\n\n",safety_fd);
+                iResult=select(fd+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
+                if(iResult>0){
+        	//printf("just read from pipe or not\n");
+        	return read(fd,buff,size);
                 }
                 else if(iResult){
                 return -1;

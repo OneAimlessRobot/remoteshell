@@ -1,3 +1,3 @@
 #!/bin/bash
 
-nano ./cmdModules/Includes/*.h ./Includes/*.h -l
+nano  ./Includes/*.h -l

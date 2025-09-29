@@ -301,7 +301,9 @@ static void accept_connections(char* shell_name){
 			raise(SIGINT);
 		}
 	}
-
+	printf("Fechando a loja!\n");
+	close(server_socket);
+	printf("loja fechada!!!\n");
 
 }
 int main(int argc, char ** argv){

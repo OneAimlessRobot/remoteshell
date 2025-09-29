@@ -1,9 +1,9 @@
 #include "../Includes/preprocessor.h"
 #include "../Includes/fileshit.h"
 
-FILE* logstream=NULL;
+FILE* logstream=stderr;
 
-u_int64_t logging=0;
+u_int64_t logging=1;
 
 char curr_dir[PATHSIZE]={0};
 

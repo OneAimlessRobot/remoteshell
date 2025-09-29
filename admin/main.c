@@ -110,7 +110,7 @@ static void* writeOutput(void* args){
 		}
 		numsent=sendsome(client_socket,outbuff,numread,srv_data_pair);
 		if(numsent<=0){
-			if((numsent==-2)){
+			if(numsent==-2){
 				continue;
 			}
 			else{

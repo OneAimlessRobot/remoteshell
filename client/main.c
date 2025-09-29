@@ -14,7 +14,7 @@ static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
 static int_pair clnt_con_pair = {CLIENT_TIMEOUT_CON_SEC,CLIENT_TIMEOUT_CON_USEC};
 
 
-static int_pair clnt_data_pair = {CLIENT_TIMEOUT_DATA_SEC,CLIENT_TIMEOUT_DATA_USEC};
+static int_pair clnt_data_pair = {SERVER_TIMEOUT_DATA_SEC,SERVER_TIMEOUT_DATA_USEC};
 
 
 static pthread_t commandPrompt;
@@ -146,13 +146,8 @@ static void* command_line_thread(void* args){
 		memset(raw_line,0,DEF_DATASIZE);
 		numread=readsome(0,raw_line,DEF_DATASIZE,clnt_data_pair);
 		if(numread<=0){
-			if(!numread||(numread==-2)){
-				continue;
-			}
-			else if(numread){
-				printf("Client launching sigint!!!\nLast numread: %d\n",numread);
-				raise(SIGINT);
-			}
+			printf("Client launching sigint!!!\nLast numread: %d\n",numread);
+			break;
 		}
 		numsent=sendsome(client_socket,raw_line,DEF_DATASIZE,clnt_data_pair);
 		if(numsent<0){

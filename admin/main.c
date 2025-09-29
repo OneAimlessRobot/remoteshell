@@ -18,7 +18,7 @@ static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
 static int_pair srv_con_pair = {SERVER_TIMEOUT_CON_SEC,SERVER_TIMEOUT_CON_USEC};
 
 
-static int_pair srv_data_pair = {SERVER_TIMEOUT_DATA_SEC,SERVER_TIMEOUT_DATA_USEC};
+static int_pair srv_data_pair = {60*5,SERVER_TIMEOUT_DATA_USEC};
 
 static pthread_t outputWritter;
 static pthread_t commandPrompt;
@@ -95,17 +95,45 @@ static void* writeOutput(void* args){
 	}
 	pthread_mutex_unlock(&outMtx);
 	printf("Server's output message channel thread online!!!\n");
-
+	int numread=-1;
+	int numsent=-1;
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
-
 	pthread_cond_signal(&cmdCond);
 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&acessVarMtx32(&varMtx,&out_alive,0,-1)){
-		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-		sendallfd(client_socket,master_fd,srv_data_pair);
-		memset(outbuff,0,DEF_DATASIZE);
+	        while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	        memset(outbuff,0,DEF_DATASIZE);
+		numread=readsome(master_fd,outbuff,DEF_DATASIZE,srv_data_pair);
+		if(numread<=0){
+			if((!numread)||(numread==-2)){
+				printf("Nothing read at output channel! Continuing...\n");
+				continue;
+			}
+			else{
+				perror("Error or interruption in output reading! Exiting...\n");
+				acessVarMtx32(&varMtx,&out_alive,0,0);
+				break;
+			}
+
 		}
+		printf("%d bytes read at output channel! Continuing...\n",numread);
+		numsent=sendsome(client_socket,outbuff,DEF_DATASIZE,srv_data_pair);
+	        if(numsent<=0){
+			if((!numsent)||(numsent==-2)){
+				printf("Nothing sent at output channel! Continuing...\n");
+				continue;
+			}
+			else{
+				perror("Error or interruption in output sending! Exiting...\n");
+				acessVarMtx32(&varMtx,&out_alive,0,0);
+				break;
+			}
+
+		}
+		printf("%d bytes sent at output channel! Continuing...\n",numsent);
+	        }
 
 	}
+
 	acessVarMtx32(&varMtx,&out_alive,0,0);
 	printf("Server's output message channel thread out!!!\n");
 	return args;

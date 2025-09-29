@@ -55,6 +55,7 @@ int writesome(int fd,char buff[],u_int64_t size,int_pair times){
 }
 
 int sendallfd(int sock,int fd,int_pair times){
+logstream= stderr;
 
 char buff[DEF_DATASIZE];
 memset(buff,0,DEF_DATASIZE);

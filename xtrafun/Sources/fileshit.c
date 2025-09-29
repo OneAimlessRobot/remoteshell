@@ -1,7 +1,7 @@
 #include "../Includes/preprocessor.h"
 #include "../Includes/fileshit.h"
 
-FILE* logstream=stderr;
+FILE* logstream=NULL;
 
 u_int64_t logging=1;
 

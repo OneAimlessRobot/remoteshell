@@ -262,17 +262,17 @@ static void accept_connections(char* shell_name){
                 tv.tv_usec=SERVER_MAXTIMEOUTUCONS;
                 iResult=select(server_socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
 	        if(iResult>0){
-			struct sockaddr addr_con={0};
+			struct sockaddr_in addr_con={0};
 		        if(client_socket<0){
 				printf("Esperando conexão de cliente\n");
-				client_socket=accept(server_socket,(struct sockaddr_in*)&addr_con,&socklenvar[0]);
+				client_socket=accept(server_socket,(struct sockaddr_in *)&addr_con,&socklenvar[0]);
 			}
 			if(client_socket<0){
 		                perror("Erro no accept (cliente)");
 		                continue;
 		        }
 		        setNonBlocking(&client_socket);
-		        print_addr_aux("Coneccao (client) de: ",(struct sockaddr_in*)&addr_con);
+		        print_addr_aux("Coneccao (client) de: ",&addr_con);
 			pid_client=fork();
 			switch(pid_client){
 				case -1:

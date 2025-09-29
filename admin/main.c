@@ -207,7 +207,7 @@ void cleanup_crew(void){
 	printf("The server got orders to exit!\n");
 	kill(pid,SIGTERM);
 	print_sock_addr(client_socket);
-	waitpid(pid,NULL,0);
+	waitpid(0,NULL,0);
 
 	printf("Cleanup crew called in server. Closing file descriptors and sockets\n");
 

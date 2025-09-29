@@ -57,9 +57,7 @@ static void initClient(int port, char* addr){
 
 	signal(SIGINT,sigint_handler);
 	signal(SIGPIPE,sigpipe_handler);
-	server_address.sin_family=AF_INET;
-	server_address.sin_addr.s_addr = inet_addr(addr);
-	server_address.sin_port= htons(port);
+	init_addr(&server_address,addr,port);
 
 
 }
@@ -87,8 +85,8 @@ void tryConnect(int* socket){
 		FD_SET((*socket),&wfds);
 
                 struct timeval t;
-		t.tv_sec=MAXTIMEOUTCONS;
-		t.tv_usec=MAXTIMEOUTUCONS;
+		t.tv_sec=CLIENT_MAXTIMEOUTCONS;
+		t.tv_usec=CLIENT_MAXTIMEOUTUCONS;
 		int iResult=select((*socket)+1,0,&wfds,0,&t);
 
 		if(iResult>0&&!success&&((*socket)!=-1)){
@@ -120,7 +118,7 @@ static void* getOutput(void* args){
 	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 		int numread=1;
 		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-			numread=timedRead(output_socket,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS);
+			numread=timedRead(output_socket,outbuff,DATASIZE,CLIENT_MAXTIMEOUTSECS,CLIENT_MAXTIMEOUTUSECS);
 			if(numread<=0){
 				break;
 			}
@@ -147,7 +145,7 @@ static void* command_line_thread(void* args){
 	memset(raw_line,0,DATASIZE);
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 		memset(raw_line,0,DATASIZE);
-		numread=timedRead(0,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
+		numread=timedRead(0,raw_line,DATASIZE,CLIENT_MAXTIMEOUTCMD,CLIENT_MAXTIMEOUTUCMD);
 		if(numread<=0){
 			if(!numread){
 				continue;
@@ -156,7 +154,7 @@ static void* command_line_thread(void* args){
 				raise(SIGINT);
 			}
 		}
-		numsent=timedSend(client_socket,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
+		numsent=timedSend(client_socket,raw_line,DATASIZE,CLIENT_MAXTIMEOUTCMD,CLIENT_MAXTIMEOUTUCMD);
 		if(numsent<0){
 			break;
 		}

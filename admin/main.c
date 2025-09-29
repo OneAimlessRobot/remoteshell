@@ -56,8 +56,8 @@ static void acceptConnection(int* socket){
                 fd_set rfds;
                 FD_ZERO(&rfds);
                 FD_SET(server_socket,&rfds);
-                tv.tv_sec=MAXTIMEOUTCONS;
-                tv.tv_usec=MAXTIMEOUTUCONS;
+                tv.tv_sec=SERVER_MAXTIMEOUTCONS;
+                tv.tv_usec=SERVER_MAXTIMEOUTUCONS;
                 iResult=select(server_socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
         if(iResult>0){
 
@@ -82,19 +82,11 @@ static void initServer(char* address,int port){
 		perror("Nao foi possivel criar server socket!!!\n");
 		exit(-1);
 	}
-	int ptr=1;
-	struct linger the_linger={0,30};
-        if(setsockopt(server_socket,SOL_SOCKET,SO_REUSEADDR,(char*)&ptr,sizeof(ptr))){
-		perror("Erro a meter SO_REUSEADDR  na socket (setsockopt)\n");
-		close(server_socket);
-	exit(-1);
-	}
-	if(setsockopt(server_socket,SOL_SOCKET,SO_LINGER,(char*)&the_linger,sizeof(struct linger))){
-		perror("Erro a meter SO_LINGER na socket (setsockopt)\n");
-		close(server_socket);
-		exit(-1);
-	}
-	fcntl(server_socket,F_SETFL,O_NONBLOCK);
+	set_sock_reuseaddr(&server_socket,1);
+	setLinger(&server_socket,0,30);
+	set_sock_recvtimeout(&server_socket,0,1000);
+	set_sock_sendtimeout(&server_socket,0,1000);
+	setNonBlocking(&server_socket);
 	init_addr(&server_address,address,port);
 	if(bind(server_socket,(struct sockaddr*) &server_address,sizeof(server_address))){
 
@@ -114,10 +106,6 @@ void setupConnections(void){
 
 	acceptConnection(&output_socket);
 	long flags=0;
-	flags= fcntl(client_socket,F_GETFL);
-	flags |= O_NONBLOCK;
-        fcntl(client_socket,F_SETFL,flags);
-
 	flags= fcntl(output_socket,F_GETFL);
 	flags |= O_NONBLOCK;
         fcntl(output_socket,F_SETFL,flags);
@@ -143,11 +131,11 @@ static void* writeOutput(void* args){
 		int numread=1;
 		int numsent=1;
 		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-		numread=timedRead(master_fd,outbuff,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTCMD);
+		numread=timedRead(master_fd,outbuff,DATASIZE,SERVER_MAXTIMEOUTCMD,SERVER_MAXTIMEOUTCMD);
 		if(numread<0){
 			break;
 		}
-		numread=timedSend(output_socket,outbuff,DATASIZE,MAXTIMEOUTSECS,MAXTIMEOUTUSECS);
+		numread=timedSend(output_socket,outbuff,DATASIZE,SERVER_MAXTIMEOUTSECS,SERVER_MAXTIMEOUTUSECS);
 		if(numsent<0){
 			break;
 		}
@@ -178,7 +166,7 @@ static void* command_prompt_thread(void* args){
 	int numread=0;
 	int numwritten=0;
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-	numread=timedRead(client_socket,raw_line,DATASIZE,MAXTIMEOUTCMD,MAXTIMEOUTUCMD);
+	numread=timedRead(client_socket,raw_line,DATASIZE,SERVER_MAXTIMEOUTCMD,SERVER_MAXTIMEOUTUCMD);
 	if(numread<0){
 
 		break;
@@ -241,7 +229,7 @@ void cleanup_crew_client(void){
 
 static void do_connection(char* shell_name){
 
-	setupConnections();
+//	setupConnections();
 
 
 	printf("Shell name: %s\n",shell_name);
@@ -253,7 +241,7 @@ static void do_connection(char* shell_name){
 	printf("Pty name: %s\n",pty_name);
 	long flags= 0;
 	flags=fcntl(master_fd,F_GETFL);
-	//flags |= O_NONBLOCK;
+	flags |= O_NONBLOCK;
         fcntl(master_fd,F_SETFL,flags);
 	pid_shell=fork();
 	switch(pid_shell){
@@ -310,30 +298,46 @@ static void accept_connections(char* shell_name){
                 fd_set rfds;
                 FD_ZERO(&rfds);
                FD_SET(server_socket,&rfds);
-                tv.tv_sec=MAXTIMEOUTCONS;
-                tv.tv_usec=MAXTIMEOUTUCONS;
+                tv.tv_sec=SERVER_MAXTIMEOUTCONS;
+                tv.tv_usec=SERVER_MAXTIMEOUTUCONS;
                 iResult=select(server_socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
 	        if(iResult>0){
+			struct sockaddr addr_con={0};
+			client_socket=accept(server_socket,(struct sockaddr_in*)&addr_con,&socklenvar[1]);
+			if(client_socket<0){
+				perror("Accept:");
+				continue;
+			}
+			setNonBlocking(&client_socket);
+			print_addr_aux("Coneccao de: ",(struct sockaddr_in*)&addr_con);
+			output_socket=accept(server_socket,(struct sockaddr_in*)&addr_con,&socklenvar[1]);
+			if(output_socket<0){
+				perror("Accept:");
+				close(client_socket);
+				continue;
+			}
+			setNonBlocking(&output_socket);
+			print_addr_aux("Coneccao de: ",(struct sockaddr_in*)&addr_con);
 			pid_client=fork();
 			switch(pid_client){
 				case -1:
+					close(output_socket);
+					close(client_socket);
+					raise(SIGINT);
+					exit(-1);
 					break;
 				case 0:
-					struct sockaddr addr_con={0};
-					client_socket=accept(server_socket,(struct sockaddr_in*)&addr_con,&socklenvar[1]);
-					if(client_socket<0){
-
-						break;
-					}
-					print_addr_aux("Coneccao de: ",(struct sockaddr_in*)&addr_con);
 					close(server_socket);
 					do_connection(shell_name);
 					signal(SIGINT,sigint_handler_server);
 					raise(SIGINT);
+					exit(-1);
 					return;
 				default:
 					close(client_socket);
+					close(output_socket);
 					client_socket=-1;
+					output_socket=-1;
 					break;
 			}
 		}

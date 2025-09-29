@@ -1,3 +1,5 @@
+
+
 #include "../xtrafun/Includes/preprocessor.h"
 
 static int32_t all_alive=1;
@@ -12,6 +14,12 @@ static pthread_mutex_t cmdMtx= PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t outCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
 
+
+static int_pair srv_con_pair = {SERVER_TIMEOUT_CON_SEC,SERVER_TIMEOUT_CON_USEC};
+
+
+static int_pair srv_data_pair = {SERVER_TIMEOUT_DATA_SEC,SERVER_TIMEOUT_DATA_USEC};
+
 static pthread_t outputWritter;
 static pthread_t commandPrompt;
 #define MAXCLIENTS 10000
@@ -24,8 +32,8 @@ int pid_shell=-1;
 int pid_client=-1;
 int32_t server_socket=-1;
 int32_t client_socket=-1;
-char raw_line[DATASIZE]={0};
-char  outbuff[DATASIZE]={0};
+char raw_line[DEF_DATASIZE]={0};
+char  outbuff[DEF_DATASIZE]={0};
 
 static void sigint_handler_client(int signal){
 	printf("sigint was called in server subprocess%d!!\n",signal);
@@ -92,18 +100,9 @@ static void* writeOutput(void* args){
 
 	pthread_cond_signal(&cmdCond);
 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)&&acessVarMtx32(&varMtx,&out_alive,0,-1)){
-		int numread=1;
-		int numsent=1;
 		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-		numread=timedRead(master_fd,outbuff,DATASIZE,SERVER_MAXTIMEOUTCMD,SERVER_MAXTIMEOUTCMD);
-		if(numread<0){
-			break;
-		}
-		numread=timedSend(client_socket,outbuff,DATASIZE,SERVER_MAXTIMEOUTSECS,SERVER_MAXTIMEOUTUSECS);
-		if(numsent<0){
-			break;
-		}
-		memset(outbuff,0,DATASIZE);
+		sendallfd(client_socket,master_fd,srv_data_pair);
+		memset(outbuff,0,DEF_DATASIZE);
 		}
 
 	}
@@ -130,7 +129,7 @@ static void* command_prompt_thread(void* args){
 	int numread=0;
 	int numwritten=0;
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-	numread=timedRead(client_socket,raw_line,DATASIZE,SERVER_MAXTIMEOUTCMD,SERVER_MAXTIMEOUTUCMD);
+	numread=readsome(client_socket,raw_line,DEF_DATASIZE,srv_data_pair);
 	if(numread<0){
 
 		break;
@@ -215,11 +214,11 @@ static void do_connection(char* shell_name){
 			dup2(slave_fd,1);
 			dup2(slave_fd,2);
 			close(slave_fd);
-			char arg0[DATASIZE]={0};
-			snprintf(arg0,DATASIZE-1,"/bin/%s",shell_name);
+			char arg0[DEF_DATASIZE]={0};
+			snprintf(arg0,DEF_DATASIZE-1,"/bin/%s",shell_name);
 			ptrs[0]=arg0;
-			char arg1[DATASIZE]={0};
-			snprintf(arg1,DATASIZE-1,"-i");
+			char arg1[DEF_DATASIZE]={0};
+			snprintf(arg1,DEF_DATASIZE-1,"-i");
 			ptrs[1]=arg1;
 			ptrs[2]=NULL;
 			login_tty(slave_fd);
@@ -257,9 +256,9 @@ static void accept_connections(char* shell_name){
                 struct timeval tv;
                 fd_set rfds;
                 FD_ZERO(&rfds);
-               FD_SET(server_socket,&rfds);
-                tv.tv_sec=SERVER_MAXTIMEOUTCONS;
-                tv.tv_usec=SERVER_MAXTIMEOUTUCONS;
+                FD_SET(server_socket,&rfds);
+                tv.tv_sec=srv_con_pair[0];
+                tv.tv_usec=srv_con_pair[1];
                 iResult=select(server_socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
 	        if(iResult>0){
 			struct sockaddr_in addr_con={0};

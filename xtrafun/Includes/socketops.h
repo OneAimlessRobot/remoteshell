@@ -1,40 +1,6 @@
 #ifndef SOCKETOPS_H
 #define SOCKETOPS_H
-#define MAXNUMBEROFTRIES 10
 
-
-#define CLIENT_MAXTIMEOUTCONS 100
-#define CLIENT_MAXTIMEOUTUCONS 0
-
-
-#define CLIENT_MAXTIMEOUTSECS (60*5)
-#define CLIENT_MAXTIMEOUTUSECS 0
-
-#define CLIENT_MAXTIMEOUTCMD 1
-#define CLIENT_MAXTIMEOUTUCMD 0
-
-#define SERVER_MAXTIMEOUTCONS 10
-#define SERVER_MAXTIMEOUTUCONS 0
-
-
-#define SERVER_MAXTIMEOUTSECS (60*5)
-#define SERVER_MAXTIMEOUTUSECS 0
-
-#define SERVER_MAXTIMEOUTCMD 1
-#define SERVER_MAXTIMEOUTUCMD 0
-
-#define DATASIZE 1024
-
-
-void safety_close(/*int fd_to_close,*/char* prompt_to_show,int safety_fd_write);
-
-int64_t timedSendSafe(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait);
-
-int64_t timedReadSafe(int fd,int safety_fd,char buff[],u_int64_t size,int secwait,int usecwait);
-
-int64_t timedSend(int fd,char buff[],u_int64_t size,int secwait,int usecwait);
-
-int64_t timedRead(int fd,char buff[],u_int64_t size,int secwait,int usecwait);
 
 void create_safety_pipe(int safety_pipe[2],char* pipe_desc,char* module_desc,int flags);
 

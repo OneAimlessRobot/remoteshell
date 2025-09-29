@@ -1,3 +1,5 @@
+#ifndef PREPROCESSOR_H
+#define PREPROCESSOR_H
 #define _GNU_SOURCE
 #include <ncurses.h>
 #include <stdio.h>
@@ -36,6 +38,11 @@
 #include "doublelistcomp.h"
 #include "hashtablecomp.h"
 #include "socketops.h"
+#include "sockio.h"
+#include "sockio_tcp.h"
 #define SERVERLOGSX 50
 #define SERVERLOGSY 0
+#define PATHSIZE 1024
+#define DEF_DATASIZE 1024
 
+#endif

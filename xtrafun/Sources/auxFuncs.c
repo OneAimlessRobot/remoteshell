@@ -1,6 +1,5 @@
 #include "../Includes/preprocessor.h"
 #include "../Includes/auxFuncs.h"
-socklen_t socklenvar[2]= {sizeof(struct sockaddr),sizeof(struct sockaddr_in)};
 
 double genRanddouble(double min, double max){
 

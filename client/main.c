@@ -1,4 +1,4 @@
-#include "Includes/preprocessor.h"
+#include "../xtrafun/Includes/preprocessor.h"
 static int32_t all_alive=1;
 static int32_t out_alive=0;
 static int32_t cmd_alive=0;
@@ -11,10 +11,16 @@ static pthread_cond_t outCond= PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
 
 
+static int_pair clnt_con_pair = {CLIENT_TIMEOUT_CON_SEC,CLIENT_TIMEOUT_CON_USEC};
+
+
+static int_pair clnt_data_pair = {CLIENT_TIMEOUT_DATA_SEC,CLIENT_TIMEOUT_DATA_USEC};
+
+
 static pthread_t commandPrompt;
 static pthread_t outputPrinter;
-char outbuff[DATASIZE*10]={0};
-char raw_line[DATASIZE]={0};
+char outbuff[DEF_DATASIZE*10]={0};
+char raw_line[DEF_DATASIZE]={0};
 
 static struct sockaddr_in server_address;
 
@@ -31,7 +37,7 @@ static void sigint_handler(int signal){
 
 static void sigpipe_handler(int signal){
 
-        printf("sigpipe was called in server!!\n");
+        printf("sigpipe was called in client!!\n");
         raise(SIGINT+signal*0);
 }
 
@@ -73,8 +79,8 @@ void tryConnect(int* socket){
 		FD_SET((*socket),&wfds);
 
                 struct timeval t;
-		t.tv_sec=CLIENT_MAXTIMEOUTCONS;
-		t.tv_usec=CLIENT_MAXTIMEOUTUCONS;
+		t.tv_sec=clnt_con_pair[0];
+		t.tv_usec=clnt_con_pair[1];
 		int iResult=select((*socket)+1,0,&wfds,0,&t);
 
 		if(iResult>0&&!success&&((*socket)!=-1)){
@@ -100,19 +106,23 @@ static void* getOutput(void* args){
         }
         pthread_mutex_unlock(&outMtx);
 	printf("Client's output printing message channel thread alive!\n");
-	memset(outbuff,0,DATASIZE);
+	memset(outbuff,0,DEF_DATASIZE);
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
-	
+	int numread=-1;
 	pthread_cond_signal(&cmdCond);
 	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-		int numread=1;
 		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-			numread=timedRead(client_socket,outbuff,DATASIZE,CLIENT_MAXTIMEOUTSECS,CLIENT_MAXTIMEOUTUSECS);
+			numread=readsome(client_socket,outbuff,DEF_DATASIZE,clnt_data_pair);
 			if(numread<=0){
-				break;
+				if((numread==-2)||!numread){
+					continue;
+				}
+				else if(numread){
+					raise(SIGINT);
+				}
 			}
 			dprintf(1,"%s",outbuff);
-			memset(outbuff,0,DATASIZE);
+			memset(outbuff,0,DEF_DATASIZE);
 		}
 	}
 	acessVarMtx32(&varMtx,&out_alive,0,0);
@@ -131,20 +141,22 @@ static void* command_line_thread(void* args){
 	printf("Client's command sending channel thread alive!\n");
 	int numread=0;
 	int numsent=0;
-	memset(raw_line,0,DATASIZE);
+	memset(raw_line,0,DEF_DATASIZE);
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-		memset(raw_line,0,DATASIZE);
-		numread=timedRead(0,raw_line,DATASIZE,CLIENT_MAXTIMEOUTCMD,CLIENT_MAXTIMEOUTUCMD);
+		memset(raw_line,0,DEF_DATASIZE);
+		numread=readsome(0,raw_line,DEF_DATASIZE,clnt_data_pair);
 		if(numread<=0){
-			if(!numread){
+			if(!numread||(numread==-2)){
 				continue;
 			}
-			else{
+			else if(numread){
+				printf("Client launching sigint!!!\nLast numread: %d\n",numread);
 				raise(SIGINT);
 			}
 		}
-		numsent=timedSend(client_socket,raw_line,DATASIZE,CLIENT_MAXTIMEOUTCMD,CLIENT_MAXTIMEOUTUCMD);
+		numsent=sendsome(client_socket,raw_line,DEF_DATASIZE,clnt_data_pair);
 		if(numsent<0){
+			printf("Client launching sigint!!!\nLast numsent: %d\n",numsent);
 			break;
 		}
 		if(!strncmp(raw_line, "exit",strlen("exit"))&&((strlen(raw_line)-1)==strlen("exit"))){

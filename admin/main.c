@@ -265,7 +265,7 @@ static void accept_connections(char* shell_name){
 			struct sockaddr_in addr_con={0};
 		        if(client_socket<0){
 				printf("Esperando conexão de cliente\n");
-				client_socket=accept(server_socket,(struct sockaddr_in *)&addr_con,&socklenvar[0]);
+				client_socket=accept(server_socket,(struct sockaddr *)&addr_con,&socklenvar[0]);
 			}
 			if(client_socket<0){
 		                perror("Erro no accept (cliente)");

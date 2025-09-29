@@ -20,7 +20,7 @@ static struct sockaddr_in server_address;
 
 
 
-int client_socket,output_socket;
+int client_socket=-1;
 
 static void sigint_handler(int signal){
 
@@ -42,19 +42,7 @@ static void initClient(int port, char* addr){
 	if(client_socket==-1){
 		raise(SIGINT);
 	}
-	output_socket= socket(AF_INET,SOCK_STREAM,0);
-	if(output_socket==-1){
-		raise(SIGINT);
-	}
-	long flags=0;
-       	flags= fcntl(client_socket,F_GETFL);
-        flags |= O_NONBLOCK;
-        fcntl(client_socket,F_SETFL,flags);
-
-	flags= fcntl(output_socket,F_GETFL);
-        flags |= O_NONBLOCK;
-        fcntl(output_socket,F_SETFL,flags);
-
+	setNonBlocking(&client_socket);
 	signal(SIGINT,sigint_handler);
 	signal(SIGPIPE,sigpipe_handler);
 	init_addr(&server_address,addr,port);
@@ -74,9 +62,9 @@ void tryConnect(int* socket){
 		socklen_t slen=sizeof(sockerr);
 		getsockopt(*socket,SOL_SOCKET,SO_ERROR,(char*)&sockerr,&slen);
 		numOfTries--;
-		if(sockerr==EINPROGRESS){
-			
-			fprintf(stderr,"Erro normal:%s\n Erro Socket%s\nNumero socket: %d\n",strerror(errno),strerror(sockerr),*socket);
+		if((errno==EINPROGRESS)||(errno==EAGAIN)){
+
+			fprintf(stdout,"Tentando de novo!\nErro normal: %s\n Erro Socket: %s\nNumero socket: %d\n",strerror(errno),strerror(sockerr),*socket);
 			continue;
 
 		}
@@ -90,16 +78,17 @@ void tryConnect(int* socket){
 		int iResult=select((*socket)+1,0,&wfds,0,&t);
 
 		if(iResult>0&&!success&&((*socket)!=-1)){
-			break;
+			fprintf(stdout,"breaking out of connection loop!!!\n");
+        		break;
 
 		}
-		fprintf(stderr,"Não foi possivel: %s\n",strerror(errno));
+		fprintf(stderr,"Não foi possivel:\nErro normal:%s\n Erro Socket%s\nNumero socket: %d\n",strerror(errno),strerror(sockerr),*socket);
         }
         if(!numOfTries){
         printf("Não foi possivel conectar. Numero limite de tentativas (%d) atingido!!!\n",MAXNUMBEROFTRIES);
         raise(SIGINT);
         }
-
+	fprintf(stdout,"Sucessfully connected!!!\n");
 }
 static void* getOutput(void* args){
 	
@@ -118,7 +107,7 @@ static void* getOutput(void* args){
 	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 		int numread=1;
 		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-			numread=timedRead(output_socket,outbuff,DATASIZE,CLIENT_MAXTIMEOUTSECS,CLIENT_MAXTIMEOUTUSECS);
+			numread=timedRead(client_socket,outbuff,DATASIZE,CLIENT_MAXTIMEOUTSECS,CLIENT_MAXTIMEOUTUSECS);
 			if(numread<=0){
 				break;
 			}
@@ -186,7 +175,6 @@ void cleanup_crew(void){
 
         printf("Cleanup crew called in client. Closing file descriptors and sockets\n");
         fflush(stdout);
-	close(output_socket);
 	close(client_socket);
 
 	printf("Finished cleanup in client.\n");
@@ -202,7 +190,6 @@ int main(int argc, char ** argv){
 
 	initClient(atoi(argv[1]),argv[2]);
 	tryConnect(&client_socket);
-	tryConnect(&output_socket);
 
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
 	pthread_setname_np(outputPrinter,"outputPrinter_remote_shell_client");

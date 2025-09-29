@@ -22,7 +22,8 @@ int master_fd=-1;
 int slave_fd=-1;
 int pid_shell=-1;
 int pid_client=-1;
-int32_t server_socket,client_socket,output_socket;
+int32_t server_socket=-1;
+int32_t client_socket=-1;
 char raw_line[DATASIZE]={0};
 char  outbuff[DATASIZE]={0};
 
@@ -49,30 +50,6 @@ static void sigpipe_handler_server(int signal){
 	sigint_handler_server(SIGINT+signal*0);
 }
 
-static void acceptConnection(int* socket){
-
-		int iResult;
-                struct timeval tv;
-                fd_set rfds;
-                FD_ZERO(&rfds);
-                FD_SET(server_socket,&rfds);
-                tv.tv_sec=SERVER_MAXTIMEOUTCONS;
-                tv.tv_usec=SERVER_MAXTIMEOUTUCONS;
-                iResult=select(server_socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
-        if(iResult>0){
-
-		*socket=accept(server_socket,NULL,NULL);
-	}
-	else{
-		printf("No client connected!!!!\n");
-		return;
-	}
-	struct sockaddr addr_con={0};
-	
-	getpeername(*socket,&addr_con,&socklenvar[1]);
-	print_addr_aux("Coneccao de: ",(struct sockaddr_in*)&addr_con);
-
-}
 static void initServer(char* address,int port){
 
 
@@ -83,9 +60,9 @@ static void initServer(char* address,int port){
 		exit(-1);
 	}
 	set_sock_reuseaddr(&server_socket,1);
-	setLinger(&server_socket,0,30);
-	set_sock_recvtimeout(&server_socket,0,1000);
-	set_sock_sendtimeout(&server_socket,0,1000);
+	setLinger(&server_socket,0,0);
+	set_sock_recvtimeout(&server_socket,0,0);
+	set_sock_sendtimeout(&server_socket,0,0);
 	setNonBlocking(&server_socket);
 	init_addr(&server_address,address,port);
 	if(bind(server_socket,(struct sockaddr*) &server_address,sizeof(server_address))){
@@ -99,19 +76,6 @@ static void initServer(char* address,int port){
 
 
 }
-
-void setupConnections(void){
-
-
-
-	acceptConnection(&output_socket);
-	long flags=0;
-	flags= fcntl(output_socket,F_GETFL);
-	flags |= O_NONBLOCK;
-        fcntl(output_socket,F_SETFL,flags);
-
-}
-
 
 static void* writeOutput(void* args){
 
@@ -135,7 +99,7 @@ static void* writeOutput(void* args){
 		if(numread<0){
 			break;
 		}
-		numread=timedSend(output_socket,outbuff,DATASIZE,SERVER_MAXTIMEOUTSECS,SERVER_MAXTIMEOUTUSECS);
+		numread=timedSend(client_socket,outbuff,DATASIZE,SERVER_MAXTIMEOUTSECS,SERVER_MAXTIMEOUTUSECS);
 		if(numsent<0){
 			break;
 		}
@@ -221,15 +185,11 @@ void cleanup_crew_client(void){
 	close(master_fd);
 	close(server_socket);
 	close(client_socket);
-	close(output_socket);
-
 	printf("Finished cleanup in server.\n");
 
 }
 
 static void do_connection(char* shell_name){
-
-//	setupConnections();
 
 
 	printf("Shell name: %s\n",shell_name);
@@ -303,25 +263,19 @@ static void accept_connections(char* shell_name){
                 iResult=select(server_socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
 	        if(iResult>0){
 			struct sockaddr addr_con={0};
-			client_socket=accept(server_socket,(struct sockaddr_in*)&addr_con,&socklenvar[1]);
+		        if(client_socket<0){
+				printf("Esperando conexão de cliente\n");
+				client_socket=accept(server_socket,(struct sockaddr_in*)&addr_con,&socklenvar[0]);
+			}
 			if(client_socket<0){
-				perror("Accept:");
-				continue;
-			}
-			setNonBlocking(&client_socket);
-			print_addr_aux("Coneccao de: ",(struct sockaddr_in*)&addr_con);
-			output_socket=accept(server_socket,(struct sockaddr_in*)&addr_con,&socklenvar[1]);
-			if(output_socket<0){
-				perror("Accept:");
-				close(client_socket);
-				continue;
-			}
-			setNonBlocking(&output_socket);
-			print_addr_aux("Coneccao de: ",(struct sockaddr_in*)&addr_con);
+		                perror("Erro no accept (cliente)");
+		                continue;
+		        }
+		        setNonBlocking(&client_socket);
+		        print_addr_aux("Coneccao (client) de: ",(struct sockaddr_in*)&addr_con);
 			pid_client=fork();
 			switch(pid_client){
 				case -1:
-					close(output_socket);
 					close(client_socket);
 					raise(SIGINT);
 					exit(-1);
@@ -335,9 +289,7 @@ static void accept_connections(char* shell_name){
 					return;
 				default:
 					close(client_socket);
-					close(output_socket);
 					client_socket=-1;
-					output_socket=-1;
 					break;
 			}
 		}

@@ -1,6 +1,7 @@
 #include "../xtrafun/Includes/preprocessor.h"
 
 static int32_t all_alive=1;
+static int32_t server_alive=1;
 static int32_t out_alive=0;
 static int32_t cmd_alive=0;
 static pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
@@ -13,27 +14,39 @@ static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
 
 static pthread_t outputWritter;
 static pthread_t commandPrompt;
-
+#define MAXCLIENTS 10000
 struct sockaddr_in server_address;
 
 
 int master_fd=-1;
 int slave_fd=-1;
-int pid=0;
+int pid_shell=-1;
+int pid_client=-1;
 int32_t server_socket,client_socket,output_socket;
 char raw_line[DATASIZE]={0};
 char  outbuff[DATASIZE]={0};
 
-static void sigint_handler(int signal){
-	printf("sigint was called in server %d!!\n",signal);
+static void sigint_handler_client(int signal){
+	printf("sigint was called in server subprocess%d!!\n",signal);
 	acessVarMtx32(&varMtx,&all_alive,0,0);
 	pthread_cond_signal(&exitCond);
 }
 
-static void sigpipe_handler(int signal){
+static void sigpipe_handler_client(int signal){
 
-	printf("sigpipe was called in server!!\n");
-	raise(SIGINT+signal*0);
+	printf("sigpipe was called in server subprocess!!\n");
+	sigint_handler_client(SIGINT+signal*0);
+}
+
+static void sigint_handler_server(int signal){
+
+	printf("sigint was called in server process!!\n");
+	server_alive=0*signal;
+}
+static void sigpipe_handler_server(int signal){
+
+	printf("sigpipe was called in server process!!\n");
+	sigint_handler_server(SIGINT+signal*0);
 }
 
 static void acceptConnection(int* socket){
@@ -51,7 +64,6 @@ static void acceptConnection(int* socket){
 		*socket=accept(server_socket,NULL,NULL);
 	}
 	else{
-		raise(SIGINT);
 		printf("No client connected!!!!\n");
 		return;
 	}
@@ -91,7 +103,7 @@ static void initServer(char* address,int port){
 		exit(-1);
 	}
 	print_addr_aux("server inicializado no address: ",&server_address);
-        listen(server_socket,3);
+        listen(server_socket,2*MAXCLIENTS);
 
 
 }
@@ -99,7 +111,6 @@ static void initServer(char* address,int port){
 void setupConnections(void){
 
 
-	acceptConnection(&client_socket);
 
 	acceptConnection(&output_socket);
 	long flags=0;
@@ -194,7 +205,7 @@ static void* command_prompt_thread(void* args){
 
 }
 
-void cleanup_crew(void){
+void cleanup_crew_client(void){
 
 	pthread_mutex_lock(&exitMtx);
 	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
@@ -205,7 +216,7 @@ void cleanup_crew(void){
 	pthread_mutex_unlock(&exitMtx);
 	printf("Cleanup crew called in server\n");
 	printf("The server got orders to exit!\n");
-	kill(pid,SIGTERM);
+	kill(pid_shell,SIGTERM);
 	print_sock_addr(client_socket);
 	waitpid(0,NULL,0);
 
@@ -228,18 +239,12 @@ void cleanup_crew(void){
 
 }
 
+static void do_connection(char* shell_name){
 
-int main(int argc, char ** argv){
-	
-	if(argc!=4){
-
-		printf("arg1: address\narg2: porta do server\narg3: shell to use\n");
-		exit(-1);
-	}
-	initServer(argv[1],atoi(argv[2]));
 	setupConnections();
 
-	printf("Shell name: %s\n",argv[3]);
+
+	printf("Shell name: %s\n",shell_name);
 
 	char* ptrs[3];
 	char pty_name[128]={0};
@@ -250,8 +255,8 @@ int main(int argc, char ** argv){
 	flags=fcntl(master_fd,F_GETFL);
 	//flags |= O_NONBLOCK;
         fcntl(master_fd,F_SETFL,flags);
-	pid=fork();
-	switch(pid){
+	pid_shell=fork();
+	switch(pid_shell){
 		case -1:
 			exit(-1);
 		case 0:
@@ -263,7 +268,7 @@ int main(int argc, char ** argv){
 			dup2(slave_fd,2);
 			close(slave_fd);
 			char arg0[DATASIZE]={0};
-			snprintf(arg0,DATASIZE-1,"/bin/%s",argv[3]);
+			snprintf(arg0,DATASIZE-1,"/bin/%s",shell_name);
 			ptrs[0]=arg0;
 			char arg1[DATASIZE]={0};
 			snprintf(arg1,DATASIZE-1,"-i");
@@ -280,8 +285,8 @@ int main(int argc, char ** argv){
 	pthread_create(&commandPrompt,NULL,command_prompt_thread,NULL);
 	pthread_setname_np(commandPrompt,"commandPrompt_remote_shell_server");
 
-	signal(SIGINT,sigint_handler);
-	signal(SIGPIPE,sigpipe_handler);
+	signal(SIGINT,sigint_handler_client);
+	signal(SIGPIPE,sigpipe_handler_client);
 
 	acessVarMtx32(&varMtx,&out_alive,1,0);
 
@@ -291,7 +296,69 @@ int main(int argc, char ** argv){
 	pthread_setname_np(outputWritter,"outputWritter_remote_shell_server");
 
 
-	cleanup_crew();
+	cleanup_crew_client();
+
+
+}
+
+static void accept_connections(char* shell_name){
+
+	while(server_alive){
+		
+		int iResult;
+                struct timeval tv;
+                fd_set rfds;
+                FD_ZERO(&rfds);
+               FD_SET(server_socket,&rfds);
+                tv.tv_sec=MAXTIMEOUTCONS;
+                tv.tv_usec=MAXTIMEOUTUCONS;
+                iResult=select(server_socket+1,&rfds,(fd_set*)0,(fd_set*)0,&tv);
+	        if(iResult>0){
+			pid_client=fork();
+			switch(pid_client){
+				case -1:
+					break;
+				case 0:
+					struct sockaddr addr_con={0};
+					client_socket=accept(server_socket,(struct sockaddr_in*)&addr_con,&socklenvar[1]);
+					if(client_socket<0){
+
+						break;
+					}
+					print_addr_aux("Coneccao de: ",(struct sockaddr_in*)&addr_con);
+					close(server_socket);
+					do_connection(shell_name);
+					signal(SIGINT,sigint_handler_server);
+					raise(SIGINT);
+					return;
+				default:
+					close(client_socket);
+					client_socket=-1;
+					break;
+			}
+		}
+		else if(!iResult){
+			print_addr_aux("No client connected!!!!\n",&server_address);
+		}
+		else{
+			perror("Select error in server connection accepting\n");
+			raise(SIGINT);
+		}
+	}
+
+
+}
+int main(int argc, char ** argv){
+	
+	if(argc!=4){
+
+		printf("arg1: address\narg2: porta do server\narg3: shell to use\n");
+		exit(-1);
+	}
+	initServer(argv[1],atoi(argv[2]));
+	signal(SIGINT,sigint_handler_server);
+	signal(SIGPIPE,sigpipe_handler_server);
+	accept_connections(argv[3]);
         printf("ending server.\n");
 	return 0;
 }

@@ -44,27 +44,21 @@ static void* writeOutput(void* args){
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 	pthread_cond_signal(&cmdCond);
 	memset(outbuff,0,DEF_DATASIZE);
-	numread=readsome(master_fd,outbuff,DEF_DATASIZE,srv_data_pair);
-	if(numread<=0){
-		printf("RUNNING IN THE 90s!!!!\n");
-	}
-	else{
-		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-			numsent=sendsome(client_socket,outbuff,numread,srv_data_pair);
-			if(numsent<=0){
-		               if((numsent==-2)||!numsent){
-	                                continue;
-	                        }
-	                        else if(numread){
-	                        	perror("Error or interruption in output sending! Exiting...\n");
-				        break;
-				}
-			}
-			memset(outbuff,0,DEF_DATASIZE);
-			numread=readsome(master_fd,outbuff,DEF_DATASIZE,srv_data_pair);
-			if(numread<=0){
-				printf("RUNNING IN THE 90s!!!!\n");
-				break;
+	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+		memset(outbuff,0,DEF_DATASIZE);
+		numread=readsome(master_fd,outbuff,DEF_DATASIZE,srv_data_pair);
+		if(numread<=0){
+			printf("RUNNING IN THE 90s!!!!\n");
+			break;
+		}
+		numsent=sendsome(client_socket,outbuff,numread,srv_data_pair);
+		if(numsent<=0){
+	               if((numsent==-2)||!numsent){
+                                continue;
+                        }
+                        else if(numread){
+                        	perror("Error or interruption in output sending! Exiting...\n");
+			        break;
 			}
 		}
 	}

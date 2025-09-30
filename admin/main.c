@@ -1,7 +1,7 @@
-
-
 #include "../xtrafun/Includes/preprocessor.h"
 #include "../xtrafun/Includes/fileshit.h"
+
+struct sigaction sa;
 
 static int32_t all_alive=1;
 static int32_t server_alive=1;
@@ -37,8 +37,8 @@ char raw_line[DEF_DATASIZE]={0};
 char  outbuff[DEF_DATASIZE]={0};
 
 static void sigint_handler_client(int signal){
-	printf("sigint was called in server subprocess%d!!\n",signal);
-	acessVarMtx32(&varMtx,&all_alive,0,0);
+	printf("sigint was called in server subprocess!!\n");
+	acessVarMtx32(&varMtx,&all_alive,0,0*signal);
 	pthread_cond_signal(&exitCond);
 }
 
@@ -47,7 +47,6 @@ static void sigpipe_handler_client(int signal){
 	printf("sigpipe was called in server subprocess!!\n");
 	sigint_handler_client(SIGINT+signal*0);
 }
-
 static void sigint_handler_server(int signal){
 
 	printf("sigint was called in server process!!\n");
@@ -57,6 +56,19 @@ static void sigpipe_handler_server(int signal){
 
 	printf("sigpipe was called in server process!!\n");
 	sigint_handler_server(SIGINT+signal*0);
+}
+static void sigact_sigint_handler_server(int signal){
+
+	printf("sigation for sigchild was called in server process!!\n");
+	sigint_handler_server(SIGINT+signal*0);
+}
+
+static void switch_all_off(void){
+
+	acessVarMtx32(&varMtx,&all_alive,0,0);
+	acessVarMtx32(&varMtx,&out_alive,0,0);
+	acessVarMtx32(&varMtx,&cmd_alive,0,0);
+
 }
 
 static void initServer(char* address,int port){
@@ -70,8 +82,8 @@ static void initServer(char* address,int port){
 	}
 	set_sock_reuseaddr(&server_socket,1);
 	setLinger(&server_socket,0,0);
-	set_sock_recvtimeout(&server_socket,0,0);
-	set_sock_sendtimeout(&server_socket,0,0);
+	set_sock_recvtimeout(&server_socket,30,0);
+	set_sock_sendtimeout(&server_socket,30,0);
 	setNonBlocking(&server_socket);
 	init_addr(&server_address,address,port);
 	if(bind(server_socket,(struct sockaddr*) &server_address,sizeof(server_address))){
@@ -104,8 +116,6 @@ static void* writeOutput(void* args){
 		memset(outbuff,0,DEF_DATASIZE);
 		numread=readsome(master_fd,outbuff,DEF_DATASIZE,srv_data_pair);
 		if(numread<=0){
-			acessVarMtx32(&varMtx,&all_alive,0,0);
-			acessVarMtx32(&varMtx,&out_alive,0,0);
 			break;
 		}
 		numsent=sendsome(client_socket,outbuff,numread,srv_data_pair);
@@ -115,16 +125,12 @@ static void* writeOutput(void* args){
 			}
 			else{
 				perror("Error or interruption in output sending! Exiting...\n");
-				acessVarMtx32(&varMtx,&all_alive,0,0);
-				acessVarMtx32(&varMtx,&out_alive,0,0);
 				break;
 			}
 
 		}
 	}
-
 	printf("Server's output message channel thread out!!!\n");
-	raise(SIGINT);
 	return args;
 
 
@@ -141,32 +147,26 @@ static void* command_prompt_thread(void* args){
 	pthread_mutex_unlock(&cmdMtx);
 
 	printf("Server's command receiving channel thread about to start!\n");
-	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 	memset(raw_line,0,sizeof(raw_line));
 	int numread=0;
 	int numwritten=0;
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-	numread=readsome(client_socket,raw_line,DEF_DATASIZE,srv_data_pair);
+	numread=recvsome(client_socket,raw_line,DEF_DATASIZE,srv_data_pair);
 	if(numread<0){
-
 		break;
 	}
-	numwritten=write(master_fd,raw_line,strlen(raw_line));
+	numwritten=writesome(master_fd,raw_line,strlen(raw_line),srv_data_pair);
 	if(numwritten<0){
-
 		break;
 	}
 	if(!strncmp(raw_line, "exit",strlen("exit"))&&((strlen(raw_line)-1)==strlen("exit"))){
 
 		printf("The server got orders to exit!\n");
-		acessVarMtx32(&varMtx,&all_alive,0,0);
 		break;
 
 	}
 	memset(raw_line,0,sizeof(raw_line));
 	}
-	}
-	acessVarMtx32(&varMtx,&cmd_alive,0,0);
 	printf("Server's command receiving channel thread about to exit!\n");
 	raise(SIGINT);
 	return args;
@@ -182,22 +182,39 @@ void cleanup_crew_client(void){
 
 	}
 	pthread_mutex_unlock(&exitMtx);
-	printf("Cleanup crew called in server\n");
-	printf("The server got orders to exit!\n");
-	kill(pid_shell,SIGTERM);
-	print_sock_addr(client_socket);
-	waitpid(0,NULL,0);
-
+	printf("Cleanup crew called in server subprocees\n");
+	switch_all_off();
+	printf("This server subprocess got orders to exit!\n");
+	kill(pid_shell,SIGCHLD);
+	printf("We tried to kill process number %d!!!!!\n",pid_shell);
+	siginfo_t sig_info;
+	printf("Waiting for subprocess children!\n");
+	int status=-1;
+	while(1){
+		status=waitid(P_ALL,-1,&sig_info,WEXITED|WNOHANG);
+		if(status>0){
+			printf("process of pid: %d\nAnd uid %d\nExited!!!\n",sig_info.si_pid,sig_info.si_uid);
+		}
+		else{
+			printf("Yeeey no more childreeen\n");
+			break;
+		}
+	}
+	
 	printf("Cleanup crew called in server. Closing file descriptors and sockets\n");
 
 
 	printf("Cleanup crew called in server. About to join threads which are online\n");
-	
-	printf("reaping server comamnd reader thread!!\n");
-	pthread_join(commandPrompt,NULL);
-	printf("reaping server output writter thread!!\n");
-	pthread_join(outputWritter,NULL);
-
+	if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
+		printf("reaping server comamnd reader thread...\n");
+		pthread_join(commandPrompt,NULL);
+		printf("reaped server comamnd reader thread!!\n");
+	}
+	if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
+		printf("reaping server output writter thread...\n");
+		pthread_join(outputWritter,NULL);
+		printf("reaped server output writter thread!!\n");
+	}
 	close(master_fd);
 	close(server_socket);
 	close(client_socket);
@@ -242,6 +259,7 @@ static void do_connection(char* shell_name){
 			execvp(ptrs[0], ptrs);
 			exit(-1);
 		default:
+			printf("We just spawned shell process of pid number %d!!!!!\n",pid_shell);
 			close(slave_fd);
 			break;
 	}
@@ -295,15 +313,12 @@ static void accept_connections(char* shell_name){
 					close(client_socket);
 					raise(SIGINT);
 					exit(-1);
-					break;
 				case 0:
 					close(server_socket);
 					do_connection(shell_name);
-					signal(SIGINT,sigint_handler_server);
-					raise(SIGINT);
 					exit(-1);
-					return;
 				default:
+					printf("We just spawned connection process of pid number %d!!!!!\n",pid_client);
 					close(client_socket);
 					client_socket=-1;
 					break;
@@ -312,14 +327,14 @@ static void accept_connections(char* shell_name){
 		else if(!iResult){
 			print_addr_aux("No client connected!!!!\n",&server_address);
 		}
-		else{
+		else if(errno!=EINTR){
 			perror("Select error in server connection accepting\n");
 			raise(SIGINT);
 		}
 	}
-	printf("Fechando a loja!\n");
+	printf("A fechar a loja!!!\n");
 	close(server_socket);
-	printf("loja fechada!!!\n");
+	printf("Loja fechada\n");
 
 }
 int main(int argc, char ** argv){
@@ -332,6 +347,12 @@ int main(int argc, char ** argv){
 	logstream=stderr;
 	logging=1;
 	initServer(argv[1],atoi(argv[2]));
+	sa.sa_handler=sigact_sigint_handler_server;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags=SA_RESTART|SA_NOCLDWAIT;
+
+        sigaction(SIGCHLD, &sa, NULL);
+
 	signal(SIGINT,sigint_handler_server);
 	signal(SIGPIPE,sigpipe_handler_server);
 	accept_connections(argv[3]);

@@ -1,32 +1,6 @@
 #include "../xtrafun/Includes/preprocessor.h"
-static int32_t all_alive=1;
-static int32_t out_alive=0;
-static int32_t cmd_alive=0;
-static pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t exitCond= PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t exitMtx= PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t cmdCond= PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t cmdMtx= PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t outCond= PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t outMtx= PTHREAD_MUTEX_INITIALIZER;
+#include "../xtrafun/Includes/fileshit.h"
 
-
-static int_pair clnt_con_pair = {CLIENT_TIMEOUT_CON_SEC,CLIENT_TIMEOUT_CON_USEC};
-
-
-static int_pair clnt_data_pair = {SERVER_TIMEOUT_DATA_SEC,SERVER_TIMEOUT_DATA_USEC};
-
-
-static pthread_t commandPrompt;
-static pthread_t outputPrinter;
-char outbuff[DEF_DATASIZE*10]={0};
-char raw_line[DEF_DATASIZE]={0};
-
-static struct sockaddr_in server_address;
-
-
-
-int client_socket=-1;
 
 static void sigint_handler(int signal){
 
@@ -111,19 +85,17 @@ static void* getOutput(void* args){
 	int numread=-1;
 	pthread_cond_signal(&cmdCond);
 	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-		while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-			numread=readsome(client_socket,outbuff,DEF_DATASIZE,clnt_data_pair);
-			if(numread<=0){
-				if((numread==-2)||!numread){
-					continue;
-				}
-				else if(numread){
-					raise(SIGINT);
-				}
+		numread=recvsome(client_socket,outbuff,DEF_DATASIZE,clnt_data_pair);
+		if(numread<=0){
+			if((numread==-2)||!numread){
+				continue;
 			}
-			dprintf(1,"%s",outbuff);
-			memset(outbuff,0,DEF_DATASIZE);
+			else if(numread){
+				raise(SIGINT);
+			}
 		}
+		dprintf(1,"%s",outbuff);
+		memset(outbuff,0,DEF_DATASIZE);
 	}
 	acessVarMtx32(&varMtx,&out_alive,0,0);
 	printf("Client's output printing message channel thread exiting!\n");

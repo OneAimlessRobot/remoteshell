@@ -2,6 +2,7 @@
 #define PREPROCESSOR_H
 #define _GNU_SOURCE
 #include <ncurses.h>
+#include <termios.h>
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <sys/param.h>

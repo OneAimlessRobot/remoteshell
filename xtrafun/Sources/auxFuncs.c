@@ -199,6 +199,6 @@ void destroy_win(WINDOW *local_win)
 }
 
 void clear_screen_with_printf(void){
-	const char* str="\e[1;1H\e[2J";
-	write(STDOUT_FILENO,str,strlen(str));
+	printf("\e[1;1H\e[2J");
+
 }

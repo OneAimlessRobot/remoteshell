@@ -218,6 +218,7 @@ int main(int argc, char ** argv){
 	pthread_create(&commandPrompt,NULL,command_line_thread,NULL);
         pthread_setname_np(commandPrompt,"commandPrompt_remote_shell_client");
 
+	clear_screen_with_printf();
 	if(enable_ncurses){
 		clear();
 	}

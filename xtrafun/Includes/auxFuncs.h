@@ -22,6 +22,6 @@ void print_sock_addr(int socket);
 void init_addr(struct sockaddr_in* addr, char* hostname_str,uint16_t port);
 void destroy_win(WINDOW *local_win);
 WINDOW *create_newwin(int height, int width, int starty, int startx);
-
+void clear_screen_with_printf(void);
 extern socklen_t socklenvar[2];
 #endif

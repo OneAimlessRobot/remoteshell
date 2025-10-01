@@ -2,21 +2,58 @@
 #include "../xtrafun/Includes/fileshit.h"
 
 
+static char wbuf[DEF_DATASIZE*4*1000]={0};
+
+typedef int (*format_func)(const char*,...);
+
+static pthread_mutex_t ncurses_mtx= PTHREAD_MUTEX_INITIALIZER;
+
+static int enable_ncurses=1;
+
+void mtx_protected_print(const char* str,...){
+	pthread_mutex_lock(&ncurses_mtx);
+	va_list args;
+	va_start(args, str);
+	vsnprintf(wbuf, sizeof(wbuf), str, args);
+	va_end(args);
+	write(STDOUT_FILENO,wbuf,strlen(wbuf));
+	pthread_mutex_unlock(&ncurses_mtx);
+
+
+}
+static void endwin_wrapper(void){
+
+        pthread_mutex_lock(&ncurses_mtx);
+        if(enable_ncurses&&!isendwin()){
+                printf("Chamamos endwin!!!!\n");
+		endwin();
+        }
+        pthread_mutex_unlock(&ncurses_mtx);
+
+}
+static void send_exit_cmd_to_server(void){
+
+	char buff[sizeof(raw_line)]={0};
+	snprintf(buff,sizeof(buff)-1,"exit\n");
+	sendsome(client_socket,buff,DEF_DATASIZE,clnt_data_pair);
+
+}
+
 static void sigint_handler(int signal){
 
-        printf("sigint was called in client!!\n");
-        acessVarMtx32(&varMtx,&all_alive,0,0*signal);
+	mtx_protected_print("sigint was called in client!!\n");
+	acessVarMtx32(&varMtx,&all_alive,0,0*signal);
         pthread_cond_signal(&exitCond);
 }
 
 static void sigpipe_handler(int signal){
 
-        printf("sigpipe was called in client!!\n");
+        mtx_protected_print("sigpipe was called in client!!\n");
         raise(SIGINT+signal*0);
 }
 
 
-static void initClient(int port, char* addr){
+static void initClient(char* addr,int port){
 
 	client_socket= socket(AF_INET,SOCK_STREAM,0);
 	if(client_socket==-1){
@@ -65,7 +102,7 @@ void tryConnect(int* socket){
 		fprintf(stderr,"Não foi possivel:\nErro normal:%s\n Erro Socket%s\nNumero socket: %d\n",strerror(errno),strerror(sockerr),*socket);
         }
         if(!numOfTries){
-        printf("Não foi possivel conectar. Numero limite de tentativas (%d) atingido!!!\n",MAXNUMBEROFTRIES);
+        mtx_protected_print("Não foi possivel conectar. Numero limite de tentativas (%d) atingido!!!\n",MAXNUMBEROFTRIES);
         raise(SIGINT);
         }
 	fprintf(stdout,"Sucessfully connected!!!\n");
@@ -79,7 +116,13 @@ static void* getOutput(void* args){
 
         }
         pthread_mutex_unlock(&outMtx);
-	printf("Client's output printing message channel thread alive!\n");
+	if(enable_ncurses){
+		initscr();
+		keypad(stdscr, TRUE);
+		echo();
+		typeahead(0);
+	}
+	mtx_protected_print("Client's output printing message channel thread alive!\n");
 	memset(outbuff,0,DEF_DATASIZE);
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 	int numread=-1;
@@ -94,11 +137,17 @@ static void* getOutput(void* args){
 				raise(SIGINT);
 			}
 		}
-		dprintf(1,"%s",outbuff);
+		if(enable_ncurses){
+			clear();
+		}
+		mtx_protected_print("%s",outbuff);
 		memset(outbuff,0,DEF_DATASIZE);
 	}
 	acessVarMtx32(&varMtx,&out_alive,0,0);
-	printf("Client's output printing message channel thread exiting!\n");
+	if(enable_ncurses){
+		endwin_wrapper();
+	}
+	mtx_protected_print("Client's output printing message channel thread exiting!\n");
 	return args;
 
 }
@@ -109,7 +158,7 @@ static void* command_line_thread(void* args){
 		pthread_cond_wait(&cmdCond,&cmdMtx);
 
 	}
-	pthread_mutex_unlock(&cmdMtx);
+	pthread_mutex_unlock(&cmdMtx);;
 	printf("Client's command sending channel thread alive!\n");
 	int numread=0;
 	int numsent=0;
@@ -117,17 +166,11 @@ static void* command_line_thread(void* args){
 	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
 		memset(raw_line,0,DEF_DATASIZE);
 		numread=readsome(0,raw_line,DEF_DATASIZE,clnt_data_pair);
-		if(numread<=0){
-			printf("Client launching sigint!!!\nLast numread: %d\n",numread);
-			break;
-		}
-		numsent=sendsome(client_socket,raw_line,DEF_DATASIZE,clnt_data_pair);
-		if(numsent<0){
-			printf("Client launching sigint!!!\nLast numsent: %d\n",numsent);
-			break;
-		}
-		if(!strncmp(raw_line, "exit",strlen("exit"))&&((strlen(raw_line)-1)==strlen("exit"))){
-			break;
+		if(numread>0){
+			numsent=sendsome(client_socket,raw_line,DEF_DATASIZE,clnt_data_pair);
+			if(numsent<0){
+				break;
+			}
 		}
 	}
 	printf("Client's command sending channel thread exiting!\n");
@@ -144,32 +187,36 @@ void cleanup_crew(void){
 
         }
         pthread_mutex_unlock(&exitMtx);
-        printf("Cleanup crew called in client\n");
-	printf("Cleanup crew called in client. About to join threads which are online\n");
-        printf("Reaping client cmdline thread!!\n");
+        send_exit_cmd_to_server();
+	mtx_protected_print("Cleanup crew called in client\n");
+	mtx_protected_print("Cleanup crew called in client. About to join threads which are online\n");
+        mtx_protected_print("Reaping client cmdline thread!!\n");
 	pthread_join(commandPrompt,NULL);
 
-        printf("Reaping client output writter thread!!\n");
+        mtx_protected_print("Reaping client output writter thread!!\n");
 	pthread_join(outputPrinter,NULL);
 
-        printf("Cleanup crew called in client. Closing file descriptors and sockets\n");
+        mtx_protected_print("Cleanup crew called in client. Closing file descriptors and sockets\n");
         fflush(stdout);
 	close(client_socket);
 
-	printf("Finished cleanup in client.\n");
+	mtx_protected_print("Finished cleanup in client.\n");
 }
 
 int main(int argc, char ** argv){
 
-	if(argc!=3){
+	if(argc!=4){
 
-		printf("Utilizacao correta: arg1: ip de server a connectar.\narg2: porta de server\n");
+		mtx_protected_print("Utilizacao correta: arg1: ip de server a connectar.\narg2: porta de server\narg3: enable_ncurses or not (0=off, 1=on)\n");
 		exit(-1);
 	}
-
-	initClient(atoi(argv[1]),argv[2]);
+	
+	enable_ncurses=clamp(atoi(argv[3]),0,1);
+	
+	initClient(argv[1],atoi(argv[2]));
 	tryConnect(&client_socket);
-
+	
+	
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
 	pthread_setname_np(outputPrinter,"outputPrinter_remote_shell_client");
 

@@ -20,7 +20,7 @@ SERVER_BINARY= ./admin/admin.exe
 CURRDIR=echo `pwd`
 
 CC= cc
-#CC= clang
+CC= clang
 DEPFLAGS= -MP -MD
 
 #CFLAGS= -fsanitize=thread -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -gdwarf-4 $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)

@@ -48,7 +48,6 @@ static void* writeOutput(void* args){
 		memset(outbuff,0,DEF_DATASIZE);
 		numread=readsome(master_fd,outbuff,DEF_DATASIZE,srv_data_pair);
 		if(numread<=0){
-			printf("RUNNING IN THE 90s!!!!\n");
 			break;
 		}
 		numsent=sendsome(client_socket,outbuff,numread,srv_data_pair);
@@ -63,7 +62,6 @@ static void* writeOutput(void* args){
 		}
 	}
 	printf("Server's output message channel thread out!!!\n");
-	raise(SIGINT);
         return args;
 
 

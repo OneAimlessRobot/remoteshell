@@ -100,6 +100,7 @@ void* tmp=*var1;
 
 
 int64_t min(int64_t arg1, int64_t arg2){
+	
 
 	if(arg1<arg2){
 
@@ -107,6 +108,38 @@ int64_t min(int64_t arg1, int64_t arg2){
 
 	}
 	return arg2;
+
+
+}
+int64_t max(int64_t arg1, int64_t arg2){
+
+	if(arg1>arg2){
+
+		return arg1;
+
+	}
+	return arg2;
+
+
+}
+int64_t clamp(int64_t value,int64_t arg1, int64_t arg2){
+	
+	if(arg1>arg2){
+	int64_t tmp_var=arg1;
+	arg1=arg2;
+	arg2=tmp_var;
+
+	}
+	if(value<arg1){
+
+		return arg1;
+
+	}
+	if(value>arg2){
+
+		return arg2;
+	}
+	return value;
 
 
 }
@@ -145,4 +178,22 @@ void init_addr(struct sockaddr_in* addr, char* hostname_str,uint16_t port){
         if(addr_info_struct){
                 freeaddrinfo(addr_info_struct);
         }
+}
+WINDOW *create_newwin(int height, int width, int starty, int startx)
+{	WINDOW *local_win;
+
+	local_win = newwin(height, width, starty, startx);
+	box(local_win, 0 , 0);		/* 0, 0 gives default characters 
+					 * for the vertical and horizontal
+					 * lines			*/
+	wrefresh(local_win);		/* Show that box 		*/
+
+	return local_win;
+}
+
+void destroy_win(WINDOW *local_win)
+{
+	wborder(local_win, ' ', ' ', ' ',' ',' ',' ',' ',' ');
+	wrefresh(local_win);
+	delwin(local_win);
 }

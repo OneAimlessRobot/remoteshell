@@ -17,7 +17,7 @@ int_pair srv_data_pair = {SERVER_TIMEOUT_DATA_SEC,SERVER_TIMEOUT_DATA_USEC};
 int_pair clnt_con_pair = {CLIENT_TIMEOUT_CON_SEC,CLIENT_TIMEOUT_CON_USEC};
 
 
-int_pair clnt_data_pair = {SERVER_TIMEOUT_DATA_SEC,SERVER_TIMEOUT_DATA_USEC};
+int_pair clnt_data_pair = {CLIENT_TIMEOUT_DATA_SEC,CLIENT_TIMEOUT_DATA_USEC};
 
 
 int32_t client_socket=-1;

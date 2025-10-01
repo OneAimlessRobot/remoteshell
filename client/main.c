@@ -137,9 +137,6 @@ static void* getOutput(void* args){
 				raise(SIGINT);
 			}
 		}
-		if(enable_ncurses){
-			clear();
-		}
 		mtx_protected_print("%s",outbuff);
 		memset(outbuff,0,DEF_DATASIZE);
 	}
@@ -210,20 +207,21 @@ int main(int argc, char ** argv){
 		mtx_protected_print("Utilizacao correta: arg1: ip de server a connectar.\narg2: porta de server\narg3: enable_ncurses or not (0=off, 1=on)\n");
 		exit(-1);
 	}
-	
 	enable_ncurses=clamp(atoi(argv[3]),0,1);
-	
+
 	initClient(argv[1],atoi(argv[2]));
 	tryConnect(&client_socket);
-	
-	
+
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
 	pthread_setname_np(outputPrinter,"outputPrinter_remote_shell_client");
 
 	pthread_create(&commandPrompt,NULL,command_line_thread,NULL);
         pthread_setname_np(commandPrompt,"commandPrompt_remote_shell_client");
 
-        acessVarMtx32(&varMtx,&out_alive,1,0);
+	if(enable_ncurses){
+		clear();
+	}
+	acessVarMtx32(&varMtx,&out_alive,1,0);
 	pthread_cond_signal(&outCond);
 
 	cleanup_crew();

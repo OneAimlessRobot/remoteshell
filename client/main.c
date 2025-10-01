@@ -137,6 +137,7 @@ static void* getOutput(void* args){
 				raise(SIGINT);
 			}
 		}
+		clear_screen_with_printf();
 		mtx_protected_print("%s",outbuff);
 		memset(outbuff,0,DEF_DATASIZE);
 	}
@@ -218,10 +219,6 @@ int main(int argc, char ** argv){
 	pthread_create(&commandPrompt,NULL,command_line_thread,NULL);
         pthread_setname_np(commandPrompt,"commandPrompt_remote_shell_client");
 
-	clear_screen_with_printf();
-	if(enable_ncurses){
-		clear();
-	}
 	acessVarMtx32(&varMtx,&out_alive,1,0);
 	pthread_cond_signal(&outCond);
 

@@ -10,3 +10,5 @@
 *.d
 .metadata/
 *.swp
+*.save
+*.fuse*

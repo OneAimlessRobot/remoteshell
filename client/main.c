@@ -2,10 +2,15 @@
 #include "../xtrafun/Includes/fileshit.h"
 
 #define TERMBUFFSIZE 1024
+
+#define TERMIOS_BUFFER_THRESHOLD_BYTES 0
+#define TERMIOS_INPUT_DELAY_TENTHS 0
+
+
 static struct termios orig;
 
 static void enable_raw() {
-   
+
     struct termios raw;
 
     // get current terminal settings
@@ -31,8 +36,8 @@ static void enable_raw() {
     raw.c_lflag &= ~(ECHO | ICANON | IEXTEN|ISIG);
 
     // Control chars: return each byte, no timeout
-    raw.c_cc[VMIN]  = 0;
-    raw.c_cc[VTIME] = 0;
+    raw.c_cc[VMIN]  = TERMIOS_BUFFER_THRESHOLD_BYTES;
+    raw.c_cc[VTIME] = TERMIOS_INPUT_DELAY_TENTHS;
 
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
         perror("tcsetattr");

@@ -32,7 +32,7 @@ static void enable_raw() {
 
     // Control chars: return each byte, no timeout
     raw.c_cc[VMIN]  = 1;
-    raw.c_cc[VTIME] = 3;
+    raw.c_cc[VTIME] = 1;
 
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
         perror("tcsetattr");

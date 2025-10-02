@@ -1,7 +1,7 @@
 #include "../xtrafun/Includes/preprocessor.h"
 #include "../xtrafun/Includes/fileshit.h"
 
-
+#define TERMBUFFSIZE 1024
 static struct termios orig;
 
 static void enable_raw() {
@@ -176,11 +176,12 @@ static void* getOutput(void* args){
 	memset(outbuff,0,DEF_DATASIZE);
 	acessVarMtx32(&varMtx,&cmd_alive,1,0);
 	pthread_cond_signal(&cmdCond);
+	int numread=-1;
 	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
-		char c;
-		while (recvsome(client_socket, &c, 1,clnt_data_pair) == 1) {
-		        writesome(STDOUT_FILENO, &c, 1,clnt_data_pair);
-	 	}
+		while ((numread=recvsome(client_socket, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair)) >0) {
+		        writesome(STDOUT_FILENO, outbuff, numread,clnt_data_pair);
+	 		memset(outbuff,0,min(TERMBUFFSIZE,sizeof(outbuff)));
+		}
 
 	}
 	acessVarMtx32(&varMtx,&out_alive,0,0);

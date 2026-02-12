@@ -8,6 +8,7 @@
 
 
 static struct termios orig;
+static struct sigaction sa_client_shell;
 
 static void enable_raw() {
 
@@ -74,27 +75,28 @@ static void send_exit_cmd_to_server(void){
 
 static void sigint_handler(int signal){
 
-	mtx_protected_print("sigint was called in client!!\n");
-	acessVarMtx32(&varMtx,&all_alive,0,0*signal);
-        pthread_cond_signal(&exitCond);
+	all_alive=0*signal;
+}
+static void cleanup(void){
+
+	all_alive=0;
+	pthread_cond_signal(&exitCond);
 }
 
-static void sigpipe_handler(int signal){
-
-        mtx_protected_print("sigpipe was called in client!!\n");
-        raise(SIGINT+signal*0);
-}
 
 
 static void initClient(char* addr,int port){
 
 	client_socket= socket(AF_INET,SOCK_STREAM,0);
 	if(client_socket==-1){
-		raise(SIGINT);
+		exit(-1);
 	}
 	setNonBlocking(&client_socket);
-	signal(SIGINT,sigint_handler);
-	signal(SIGPIPE,sigpipe_handler);
+	sa_client_shell.sa_handler = sigint_handler;
+        sigemptyset(&sa_client_shell.sa_mask);
+        sa_client_shell.sa_flags = SA_RESTART;
+        sigaction(SIGINT, &sa_client_shell, NULL);
+        sigaction(SIGPIPE, &sa_client_shell, NULL);
 	init_addr(&server_address,addr,port);
 
 
@@ -135,8 +137,8 @@ void tryConnect(int* socket){
 		fprintf(stderr,"Não foi possivel:\nErro normal:%s\n Erro Socket%s\nNumero socket: %d\n",strerror(errno),strerror(sockerr),*socket);
         }
         if(!numOfTries){
-        mtx_protected_print("Não foi possivel conectar. Numero limite de tentativas (%d) atingido!!!\n",MAXNUMBEROFTRIES);
-        raise(SIGINT);
+        	mtx_protected_print("Não foi possivel conectar. Numero limite de tentativas (%d) atingido!!!\n",MAXNUMBEROFTRIES);
+        	cleanup();
         }
 	fprintf(stdout,"Sucessfully connected!!!\n");
 }
@@ -145,7 +147,7 @@ void tryConnect(int* socket){
 void cleanup_crew(void){
 
         pthread_mutex_lock(&exitMtx);
-        while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
+        while(all_alive){
 
                 pthread_cond_wait(&exitCond,&exitMtx);
 
@@ -171,7 +173,7 @@ void cleanup_crew(void){
 static void* getOutput(void* args){
 	
 	pthread_mutex_lock(&outMtx);
-        while(!acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+        while(!out_alive&&all_alive){
 
                 pthread_cond_wait(&outCond,&outMtx);
 
@@ -179,17 +181,18 @@ static void* getOutput(void* args){
         pthread_mutex_unlock(&outMtx);
 	mtx_protected_print("Client's output printing message channel thread alive!\n");
 	memset(outbuff,0,DEF_DATASIZE);
-	acessVarMtx32(&varMtx,&cmd_alive,1,0);
+	cmd_alive=1;
 	pthread_cond_signal(&cmdCond);
 	int numread=-1;
-	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(out_alive&&all_alive){
 		while ((numread=recvsome(client_socket, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair)) >0) {
 		        writesome(STDOUT_FILENO, outbuff, numread,clnt_data_pair);
 	 		memset(outbuff,0,min(TERMBUFFSIZE,sizeof(outbuff)));
 		}
 
 	}
-	acessVarMtx32(&varMtx,&out_alive,0,0);
+	out_alive=0;
+	cleanup();
 	mtx_protected_print("Client's output printing message channel thread exiting!\n");
 	return args;
 
@@ -197,7 +200,7 @@ static void* getOutput(void* args){
 
 static void* command_line_thread(void* args){
 	pthread_mutex_lock(&cmdMtx);
-	while(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(!cmd_alive&&all_alive){
 		pthread_cond_wait(&cmdCond,&cmdMtx);
 
 	}
@@ -207,7 +210,7 @@ static void* command_line_thread(void* args){
 	int numread=0;
 	int numsent=0;
 	memset(raw_line,0,DEF_DATASIZE);
-	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(cmd_alive&&all_alive){
 		memset(raw_line,0,DEF_DATASIZE);
 		numread=readsome(0,raw_line,DEF_DATASIZE,clnt_data_pair);
 		if(numread>0){
@@ -221,7 +224,6 @@ static void* command_line_thread(void* args){
 		}
 	}
 	printf("Client's command sending channel thread exiting!\n");
-	raise(SIGINT);
 	return args;
 }
 int main(int argc, char ** argv){
@@ -241,7 +243,7 @@ int main(int argc, char ** argv){
 	pthread_create(&commandPrompt,NULL,command_line_thread,NULL);
         pthread_setname_np(commandPrompt,"commandPrompt_remote_shell_client");
 	clear_screen_with_printf();
-	acessVarMtx32(&varMtx,&out_alive,1,0);
+	out_alive=1;
 	pthread_cond_signal(&outCond);
 
 	cleanup_crew();

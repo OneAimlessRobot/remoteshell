@@ -6,33 +6,27 @@ int master_fd=-1;
 int slave_fd=-1;
 int pid_shell=-1;
 
+struct sigaction sa_client;
+
 static void switch_all_off(void){
 
-	acessVarMtx32(&varMtx,&all_alive,0,0);
-	acessVarMtx32(&varMtx,&out_alive,0,0);
-	acessVarMtx32(&varMtx,&cmd_alive,0,0);
+	all_alive=0;
+	printf("sigint was called in server subprocess!!\n");
+	pthread_cond_signal(&exitCond);
 
 }
 
 
 static void sigint_handler_client(int signal){
-	switch_all_off();
-	printf("sigint was called in server subprocess!!\n");
-	acessVarMtx32(&varMtx,&all_alive,0,0*signal);
-	pthread_cond_signal(&exitCond);
+	all_alive=0;
 }
 
-static void sigpipe_handler_client(int signal){
-
-	printf("sigpipe was called in server subprocess!!\n");
-	sigint_handler_client(SIGINT+signal*0);
-}
 
 
 static void* writeOutput(void* args){
 
 	pthread_mutex_lock(&outMtx);
-	while(!acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(!out_alive&&all_alive){
 
 		pthread_cond_wait(&outCond,&outMtx);
 
@@ -41,10 +35,10 @@ static void* writeOutput(void* args){
 	printf("Server's output message channel thread online!!!\n");
 	int numread=-1;
 	int numsent=-1;
-	acessVarMtx32(&varMtx,&cmd_alive,1,0);
+	cmd_alive=1;
 	pthread_cond_signal(&cmdCond);
 	memset(outbuff,0,DEF_DATASIZE);
-	while(acessVarMtx32(&varMtx,&out_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(out_alive&&all_alive){
 		memset(outbuff,0,DEF_DATASIZE);
 		numread=readsome(master_fd,outbuff,DEF_DATASIZE,srv_data_pair);
 		if(numread<=0){
@@ -70,7 +64,7 @@ static void* writeOutput(void* args){
 static void* command_prompt_thread(void* args){
 	
 	pthread_mutex_lock(&cmdMtx);
-	while(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(!cmd_alive&&all_alive){
 
 		pthread_cond_wait(&cmdCond,&cmdMtx);
 
@@ -81,7 +75,7 @@ static void* command_prompt_thread(void* args){
 	memset(raw_line,0,sizeof(raw_line));
 	int numread=0;
 	int numwritten=0;
-	while(acessVarMtx32(&varMtx,&cmd_alive,0,-1)&&acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(cmd_alive&&all_alive){
 	numread=recvsome(client_socket,raw_line,DEF_DATASIZE,srv_data_pair);
 	if(numread<0){
 		break;
@@ -99,7 +93,7 @@ static void* command_prompt_thread(void* args){
 	memset(raw_line,0,sizeof(raw_line));
 	}
 	printf("Server's command receiving channel thread about to exit!\n");
-	raise(SIGINT);
+	switch_all_off();
 	return args;
 
 }
@@ -107,7 +101,7 @@ static void* command_prompt_thread(void* args){
 static void cleanup_crew_client(void){
 
 	pthread_mutex_lock(&exitMtx);
-	while(acessVarMtx32(&varMtx,&all_alive,0,-1)){
+	while(all_alive){
 
 		pthread_cond_wait(&exitCond,&exitMtx);
 
@@ -135,12 +129,12 @@ static void cleanup_crew_client(void){
 
 
 	printf("Cleanup crew called in server. About to join threads which are online\n");
-	if(!acessVarMtx32(&varMtx,&cmd_alive,0,-1)){
+	if(!cmd_alive){
 		printf("reaping server comamnd reader thread...\n");
 		pthread_join(commandPrompt,NULL);
 		printf("reaped server comamnd reader thread!!\n");
 	}
-	if(!acessVarMtx32(&varMtx,&out_alive,0,-1)){
+	if(!out_alive){
 		printf("reaping server output writter thread...\n");
 		pthread_join(outputWritter,NULL);
 		printf("reaped server output writter thread!!\n");
@@ -195,11 +189,14 @@ void do_connection(char* shell_name){
 	
 	pthread_create(&commandPrompt,NULL,command_prompt_thread,NULL);
 	pthread_setname_np(commandPrompt,"commandPrompt_remote_shell_server");
+	
+	sa_client.sa_handler = sigint_handler_client;
+        sigemptyset(&sa_client.sa_mask);
+        sa_client.sa_flags = SA_RESTART;
+        sigaction(SIGINT, &sa_client, NULL);
+        sigaction(SIGPIPE, &sa_client, NULL);
 
-	signal(SIGINT,sigint_handler_client);
-	signal(SIGPIPE,sigpipe_handler_client);
-
-	acessVarMtx32(&varMtx,&out_alive,1,0);
+	out_alive=1;
 
         pthread_cond_signal(&outCond);
 

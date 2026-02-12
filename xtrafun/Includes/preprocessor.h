@@ -20,6 +20,7 @@
 #include <time.h>
 #include <netdb.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/time.h>

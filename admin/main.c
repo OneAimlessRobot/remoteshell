@@ -4,25 +4,17 @@
 
 static int pid_client=-1;
 
-struct sigaction sa;
+struct sigaction sa_chld, sa;
 
-static int32_t server_alive=1;
+static atomic_int server_alive=1;
 
 
 static void sigint_handler_server(int signal){
 
-	printf("sigint was called in server process!!\n");
 	server_alive=0*signal;
-}
-
-static void sigpipe_handler_server(int signal){
-
-	printf("sigpipe was called in server process!!\n");
-	sigint_handler_server(SIGINT+signal*0);
 }
 static void sigact_sigint_handler_server(int signal){
 
-	printf("sigation for sigchild was called in server process!!\n");
 	server_alive+=0*signal;
 }
 static void initServer(char* address,int port){
@@ -116,14 +108,18 @@ int main(int argc, char ** argv){
 	logstream=stderr;
 	logging=1;
 	initServer(argv[1],atoi(argv[2]));
-	sa.sa_handler=sigact_sigint_handler_server;
+	sa_chld.sa_handler=sigact_sigint_handler_server;
+        sigemptyset(&sa_chld.sa_mask);
+        sa_chld.sa_flags=SA_RESTART|SA_NOCLDWAIT;
+	
+        sigaction(SIGCHLD, &sa_chld, NULL);
+	
+	sa.sa_handler = sigint_handler_server;
         sigemptyset(&sa.sa_mask);
-        sa.sa_flags=SA_RESTART|SA_NOCLDWAIT;
+        sa.sa_flags = SA_RESTART;
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGPIPE, &sa, NULL);
 
-        sigaction(SIGCHLD, &sa, NULL);
-
-	signal(SIGINT,sigint_handler_server);
-	signal(SIGPIPE,sigpipe_handler_server);
 	accept_connections(argv[3]);
         printf("ending server.\n");
 	return 0;

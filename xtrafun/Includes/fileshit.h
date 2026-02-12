@@ -17,7 +17,7 @@ extern int_pair srv_con_pair,
 		clnt_data_pair;
 
 
-extern int32_t all_alive,
+extern atomic_int all_alive,
 	out_alive,
 	cmd_alive;
 extern pthread_mutex_t varMtx,

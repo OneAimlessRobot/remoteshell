@@ -24,9 +24,9 @@ int32_t client_socket=-1;
 
 int32_t server_socket=-1;
 
-int32_t all_alive=1;
-int32_t out_alive=0;
-int32_t cmd_alive=0;
+atomic_int all_alive=1;
+atomic_int out_alive=0;
+atomic_int cmd_alive=0;
 pthread_mutex_t varMtx= PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t exitCond= PTHREAD_COND_INITIALIZER;
 pthread_mutex_t exitMtx= PTHREAD_MUTEX_INITIALIZER;

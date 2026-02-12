@@ -228,6 +228,7 @@ static void* command_line_thread(void* args){
 		}
 	}
 	printf("Client's command sending channel thread exiting!\n");
+	cleanup();
 	return args;
 }
 int main(int argc, char ** argv){

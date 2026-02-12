@@ -60,7 +60,8 @@ static void* writeOutput(void* args){
 		}
 	}
 	printf("Server's output message channel thread out!!!\n");
-        return args;
+        switch_all_off();
+	return args;
 
 
 

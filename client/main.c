@@ -76,10 +76,14 @@ static void send_exit_cmd_to_server(void){
 static void sigint_handler(int signal){
 
 	all_alive=0*signal;
+	out_alive=0*signal;
+	cmd_alive=0*signal;
 }
 static void cleanup(void){
 
 	all_alive=0;
+	out_alive=0;
+	cmd_alive=0;
 	pthread_cond_signal(&exitCond);
 }
 

@@ -11,6 +11,8 @@ struct sigaction sa_client;
 static void switch_all_off(void){
 
 	all_alive=0;
+	out_alive=0;
+	cmd_alive=0;
 	printf("sigint was called in server subprocess!!\n");
 	pthread_cond_signal(&exitCond);
 
@@ -18,7 +20,9 @@ static void switch_all_off(void){
 
 
 static void sigint_handler_client(int signal){
-	all_alive=0;
+	all_alive=0*signal;
+	out_alive=0*signal;
+	cmd_alive=0*signal;
 }
 
 

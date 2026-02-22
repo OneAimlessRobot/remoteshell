@@ -5,6 +5,140 @@
 #include "../Includes/fileshit.h"
 
 
+
+int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
+
+	int sd= SSL_get_fd(ssl);
+	size_t send_total = 0;
+	int iResult=0;
+	while (send_total < len) {
+	struct timeval tv;
+	tv.tv_sec=times[0];
+	tv.tv_usec=times[1];
+	fd_set wrfds;
+	FD_ZERO(&wrfds);
+	FD_SET(sd, &wrfds);
+	iResult=select(sd + 1, (fd_set*)0, &wrfds, (fd_set*)0, &tv);
+	if(iResult>0){
+		int ret = SSL_write(ssl, buf + send_total, len - send_total);
+	        if (ret > 0) {
+	            send_total += ret;
+	            continue;
+	        }
+			else if (ret == 0) {
+				return send_total;
+			}
+	        int ssl_err = SSL_get_error(ssl, ret);
+		if (ssl_err == SSL_ERROR_WANT_READ) {
+			fd_set rfds;
+			FD_ZERO(&rfds);
+			FD_SET(sd, &rfds);
+			select(sd + 1, &rfds, (fd_set*)0, (fd_set*)0, &tv);
+			if(logging){
+
+				fprintf(logstream, "Waiting\n%s\n",strerror(errno));
+			}
+			continue;
+		}
+		else if (ssl_err == SSL_ERROR_WANT_WRITE) {
+			fd_set wfds;
+			FD_ZERO(&wfds);
+			FD_SET(sd, &wfds);
+			select(sd + 1, (fd_set*)0, &wfds, (fd_set*)0, &tv);
+			if(logging){
+
+				fprintf(logstream, "Waiting\n%s\n",strerror(errno));
+			}
+			continue;
+		}
+		else{
+		    ERR_print_errors_fp(stderr);
+		    return -1;
+		}
+	}
+	else if(!iResult){
+		return -2;
+	}
+	else{
+		if(logging){
+
+	        	fprintf(logstream, "SELECT ERROR!!!!! SSL SEND\n%s\n",strerror(errno));
+		}
+		return -1;
+	}
+
+}
+return send_total;
+
+
+}
+
+int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
+	int sd= SSL_get_fd(ssl);
+	size_t read_total = 0;
+	int iResult=0;
+	while (read_total < len) {
+	struct timeval tv;
+	tv.tv_sec=times[0];
+	tv.tv_usec=times[1];
+	fd_set rfds;
+	FD_ZERO(&rfds);
+	FD_SET(sd, &rfds);
+	iResult=select(sd + 1, &rfds, (fd_set*)0, (fd_set*)0, &tv);
+	if(iResult>0){
+		int ret = SSL_read(ssl, buf + read_total, len - read_total);
+		if (ret > 0) {
+			read_total += ret;
+			continue;
+		}
+		else if (ret == 0) {
+			return read_total;
+		}
+		int ssl_err = SSL_get_error(ssl, ret);
+		if (ssl_err == SSL_ERROR_WANT_READ) {
+			fd_set rfds;
+			FD_ZERO(&rfds);
+			FD_SET(sd, &rfds);
+			select(sd + 1, &rfds, (fd_set*)0, (fd_set*)0, &tv);
+			if(logging){
+
+				fprintf(logstream, "Waiting\n%s\n",strerror(errno));
+			}
+			continue;
+		}
+		else if (ssl_err == SSL_ERROR_WANT_WRITE) {
+			fd_set wfds;
+			FD_ZERO(&wfds);
+			FD_SET(sd, &wfds);
+			select(sd + 1, (fd_set*)0, &wfds, (fd_set*)0, &tv);
+			if(logging){
+
+				fprintf(logstream, "Waiting\n%s\n",strerror(errno));
+			}
+			continue;
+		}
+		else{
+		    ERR_print_errors_fp(stderr);
+		    return -1;
+		}
+	}
+	else if(!iResult){
+		return -2;
+	}
+	else{
+		if(logging){
+
+	        	fprintf(logstream, "SELECT ERROR!!!!! SSL READ\n%s\n",strerror(errno));
+		}
+		return -1;
+	}
+
+}
+return read_total;
+
+}
+
+
 int sendsome(int sd,char buff[],u_int64_t size,int_pair times){
                 int iResult;
                 struct timeval tv;

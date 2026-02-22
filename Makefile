@@ -1,5 +1,9 @@
 
+LD_LOCAL_STATIC_LIBS_FOLDER= -L./libs
+
 LDLIBS=  -lm -lncurses -lpthread -lutil
+
+LDLIBS_SSL_AND_CRYPTO= $(LD_LOCAL_STATIC_LIBS_FOLDER)  -lssl -lcrypto
 
 XTRAFUN_INCLUDE= ./xtrafun/Includes
 XTRAFUN_SOURCES= ./xtrafun/Sources
@@ -22,6 +26,8 @@ CURRDIR=echo `pwd`
 CC= cc
 CC= clang
 DEPFLAGS= -MP -MD
+
+INCLUDE= ./openssl/includes
 
 #CFLAGS= -fsanitize=thread -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -gdwarf-4 $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)
 #CFLAGS= -fsanitize=address -Wall -DPROGRAMPATHAUX="$(CURRDIR)"  -Wextra -gdwarf-4 $(foreach D, $(INCLUDE), -I$(D)) $(DEPFLAGS)
@@ -69,10 +75,10 @@ client: $(CLIENT_BINARY)
 
 
 $(SERVER_BINARY): $(SERVER_OBJECTS)  $(XTRAFUN_OBJECTS)
-	$(CC) -g -v  $(CFLAGS) -o  $@ $^ $(SERVER_RESOURCEFILES)  $(LDLIBS)
+	$(CC) -g -v  $(CFLAGS) -o  $@ $^ $(SERVER_RESOURCEFILES)  $(LDLIBS) $(LDLIBS_SSL_AND_CRYPTO)
 
 $(CLIENT_BINARY): $(CLIENT_OBJECTS) $(XTRAFUN_OBJECTS)
-	$(CC) -g -v  $(CFLAGS) -o  $@ $^ $(SERVER_RESOURCEFILES)  $(LDLIBS)
+	$(CC) -g -v  $(CFLAGS) -o  $@ $^ $(SERVER_RESOURCEFILES)  $(LDLIBS) $(LDLIBS_SSL_AND_CRYPTO)
 
 
 %.o:%.c

@@ -20,6 +20,11 @@
 #include <time.h>
 #include <netdb.h>
 #include <signal.h>
+#include <openssl/opensslv.h>
+#include <openssl/ssl.h>
+#include <openssl/bio.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #include <stdatomic.h>
 #include <sys/types.h>
 #include <sys/wait.h>

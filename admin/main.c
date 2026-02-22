@@ -1,4 +1,6 @@
 #include "../xtrafun/Includes/preprocessor.h"
+#include "./Includes/admin_cert_file_paths.h"
+#include "../../xtrafun/Includes/openssl_stuff.h"
 #include "../xtrafun/Includes/fileshit.h"
 #include "./Includes/client_mgmt.h"
 
@@ -39,6 +41,7 @@ static void initServer(char* address,int port){
 		exit(-1);
 	}
 	print_addr_aux("server inicializado no address: ",&server_address);
+	initalize_admin_cert_file_paths();
         listen(server_socket,2*MAXCLIENTS);
 
 
@@ -105,15 +108,16 @@ int main(int argc, char ** argv){
 		printf("arg1: address\narg2: porta do server\narg3: shell to use\n");
 		exit(-1);
 	}
+	will_use_tls=1;
 	logstream=stderr;
 	logging=1;
 	initServer(argv[1],atoi(argv[2]));
 	sa_chld.sa_handler=sigact_sigint_handler_server;
         sigemptyset(&sa_chld.sa_mask);
         sa_chld.sa_flags=SA_RESTART|SA_NOCLDWAIT;
-	
+
         sigaction(SIGCHLD, &sa_chld, NULL);
-	
+
 	sa.sa_handler = sigint_handler_server;
         sigemptyset(&sa.sa_mask);
         sa.sa_flags = SA_RESTART;

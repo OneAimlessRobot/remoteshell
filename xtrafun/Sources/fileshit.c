@@ -7,6 +7,12 @@ u_int64_t logging=1;
 
 char curr_dir[PATHSIZE]={0};
 
+char auth_cert_file_path[PATHSIZE]={0};
+
+char host_cert_file_path[PATHSIZE]={0};
+
+char host_pkey_file_path[PATHSIZE]={0};
+
 socklen_t socklenvar[2]= {sizeof(struct sockaddr),sizeof(struct sockaddr_in)};
 
 int_pair srv_con_pair = {SERVER_TIMEOUT_CON_SEC,SERVER_TIMEOUT_CON_USEC};
@@ -23,6 +29,15 @@ int_pair clnt_data_pair = {CLIENT_TIMEOUT_DATA_SEC,CLIENT_TIMEOUT_DATA_USEC};
 int32_t client_socket=-1;
 
 int32_t server_socket=-1;
+
+u_int8_t will_use_tls;
+
+SSL* client_ssl=NULL;
+
+SSL* server_ssl=NULL;
+
+SSL_CTX* global_ctx=NULL;
+
 
 atomic_int all_alive=1;
 atomic_int out_alive=0;

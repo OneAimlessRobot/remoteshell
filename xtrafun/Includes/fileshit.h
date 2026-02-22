@@ -9,6 +9,10 @@ extern u_int64_t logging;
 
 extern char curr_dir[PATHSIZE];
 
+extern char auth_cert_file_path[PATHSIZE],
+	host_cert_file_path[PATHSIZE],
+	host_pkey_file_path[PATHSIZE];
+
 extern socklen_t socklenvar[2];
 
 extern int_pair srv_con_pair,
@@ -20,14 +24,23 @@ extern int_pair srv_con_pair,
 extern atomic_int all_alive,
 	out_alive,
 	cmd_alive;
+
 extern pthread_mutex_t varMtx,
 		exitMtx,
 		cmdMtx,
 		outMtx;
+
 extern pthread_cond_t exitCond,
 			cmdCond,
 			outCond;
 
+extern u_int8_t will_use_tls;
+
+extern SSL* client_ssl,
+		*server_ssl;
+
+
+extern SSL_CTX* global_ctx;
 
 extern int32_t server_socket,
 		client_socket;
@@ -39,6 +52,8 @@ extern pthread_t commandPrompt,
 
 extern char outbuff[DEF_DATASIZE*10],
         raw_line[DEF_DATASIZE];
+
+
 
 extern struct sockaddr_in server_address;
 

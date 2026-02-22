@@ -1,4 +1,6 @@
 #include "../xtrafun/Includes/preprocessor.h"
+#include "./Includes/client_cert_file_paths.h"
+#include "../xtrafun/Includes/openssl_stuff.h"
 #include "../xtrafun/Includes/fileshit.h"
 
 #define TERMBUFFSIZE 1024
@@ -69,7 +71,7 @@ static void send_exit_cmd_to_server(void){
 
 	char buff[sizeof(raw_line)]={0};
 	snprintf(buff,sizeof(buff)-1,"exit\n");
-	sendsome(client_socket,buff,DEF_DATASIZE,clnt_data_pair);
+	sendsome_ssl(client_ssl,buff,DEF_DATASIZE,clnt_data_pair);
 
 }
 
@@ -102,7 +104,7 @@ static void initClient(char* addr,int port){
         sigaction(SIGINT, &sa_client_shell, NULL);
         sigaction(SIGPIPE, &sa_client_shell, NULL);
 	init_addr(&server_address,addr,port);
-
+	initalize_client_cert_file_paths();
 
 }
 
@@ -171,6 +173,8 @@ void cleanup_crew(void){
 	close(client_socket);
 	clear_screen_with_printf();
 	disable_raw();
+	ShutdownSSL(&client_ssl);
+	end_openssl_libs_client_side();
 	mtx_protected_print("Finished cleanup in client.\n");
 }
 
@@ -189,7 +193,7 @@ static void* getOutput(void* args){
 	pthread_cond_signal(&cmdCond);
 	int numread=-1;
 	while(out_alive&&all_alive){
-		while ((numread=recvsome(client_socket, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair)) >0) {
+		while ((numread=readsome_ssl(client_ssl, outbuff, DEF_DATASIZE/*min(TERMBUFFSIZE,sizeof(outbuff))*/,clnt_data_pair)) >=0) {
 		        writesome(STDOUT_FILENO, outbuff, numread,clnt_data_pair);
 	 		memset(outbuff,0,min(TERMBUFFSIZE,sizeof(outbuff)));
 		}
@@ -218,7 +222,7 @@ static void* command_line_thread(void* args){
 		memset(raw_line,0,DEF_DATASIZE);
 		numread=readsome(0,raw_line,DEF_DATASIZE,clnt_data_pair);
 		if(numread>0){
-			numsent=sendsome(client_socket,raw_line,DEF_DATASIZE,clnt_data_pair);
+			numsent=sendsome_ssl(client_ssl,raw_line,DEF_DATASIZE,clnt_data_pair);
 			if(numsent<0){
 				break;
 			}
@@ -238,10 +242,14 @@ int main(int argc, char ** argv){
 		mtx_protected_print("Utilizacao correta: arg1: ip de server a connectar.\narg2: porta de server\n");
 		exit(-1);
 	}
-
+	logging=1;
+	logstream=stderr;
+	will_use_tls=1;
 	initClient(argv[1],atoi(argv[2]));
 	tryConnect(&client_socket);
-
+	init_openssl_libs_client_side();
+	convert_client_con_to_ssl(&client_ssl,client_socket,clnt_con_pair);
+	
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
 	pthread_setname_np(outputPrinter,"outputPrinter_remote_shell_client");
 

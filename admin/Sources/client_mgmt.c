@@ -1,4 +1,5 @@
 #include "../../xtrafun/Includes/preprocessor.h"
+#include "../../xtrafun/Includes/openssl_stuff.h"
 #include "../../xtrafun/Includes/fileshit.h"
 #include "../Includes/client_mgmt.h"
 
@@ -48,8 +49,8 @@ static void* writeOutput(void* args){
 		if(numread<=0){
 			break;
 		}
-		numsent=sendsome(client_socket,outbuff,numread,srv_data_pair);
-		if(numsent<=0){
+		numsent=sendsome_ssl(server_ssl,outbuff,numread,srv_data_pair);
+		if(numsent<0){
 	               if((numsent==-2)||!numsent){
                                 continue;
                         }
@@ -81,7 +82,7 @@ static void* command_prompt_thread(void* args){
 	int numread=0;
 	int numwritten=0;
 	while(cmd_alive&&all_alive){
-	numread=recvsome(client_socket,raw_line,DEF_DATASIZE,srv_data_pair);
+	numread=readsome_ssl(server_ssl,raw_line,DEF_DATASIZE,srv_data_pair);
 	if(numread<0){
 		break;
 	}
@@ -144,6 +145,8 @@ static void cleanup_crew_client(void){
 		pthread_join(outputWritter,NULL);
 		printf("reaped server output writter thread!!\n");
 	}
+	ShutdownSSL(&server_ssl);
+	end_openssl_libs_server_side();
 	close(master_fd);
 	close(client_socket);
 	printf("Finished cleanup in server.\n");
@@ -152,7 +155,8 @@ static void cleanup_crew_client(void){
 
 void do_connection(char* shell_name){
 
-
+	init_openssl_libs_server_side();
+	convert_server_con_to_ssl(&server_ssl,client_socket,srv_con_pair);
 	printf("Shell name: %s\n",shell_name);
 
 	char* ptrs[3];

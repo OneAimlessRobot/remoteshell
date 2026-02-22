@@ -193,7 +193,7 @@ static void* getOutput(void* args){
 	pthread_cond_signal(&cmdCond);
 	int numread=-1;
 	while(out_alive&&all_alive){
-		while ((numread=readsome_ssl(client_ssl, outbuff, DEF_DATASIZE/*min(TERMBUFFSIZE,sizeof(outbuff))*/,clnt_data_pair)) >=0) {
+		while ((numread=readsome_ssl(client_ssl, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair)) >=0) {
 		        writesome(STDOUT_FILENO, outbuff, numread,clnt_data_pair);
 	 		memset(outbuff,0,min(TERMBUFFSIZE,sizeof(outbuff)));
 		}

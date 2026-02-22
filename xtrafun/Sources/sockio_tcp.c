@@ -20,8 +20,9 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 	FD_SET(sd, &wrfds);
 	iResult=select(sd + 1, (fd_set*)0, &wrfds, (fd_set*)0, &tv);
 	if(iResult>0){
-		int ret = SSL_write(ssl, buf + send_total, len - send_total);
-	        if (ret > 0) {
+		return  SSL_write(ssl, buf + send_total, len - send_total);
+	        //int ret = SSL_write(ssl, buf + send_total, len - send_total);
+	        /*if (ret > 0) {
 	            send_total += ret;
 	            continue;
 	        }
@@ -54,7 +55,7 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 		else{
 		    ERR_print_errors_fp(stderr);
 		    return -1;
-		}
+		}*/
 	}
 	else if(!iResult){
 		return -2;
@@ -86,8 +87,9 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 	FD_SET(sd, &rfds);
 	iResult=select(sd + 1, &rfds, (fd_set*)0, (fd_set*)0, &tv);
 	if(iResult>0){
-		int ret = SSL_read(ssl, buf + read_total, len - read_total);
-		if (ret > 0) {
+		return SSL_read(ssl, buf + read_total, len - read_total);
+		//int ret = SSL_read(ssl, buf + read_total, len - read_total);
+		/*if (ret > 0) {
 			read_total += ret;
 			continue;
 		}
@@ -120,7 +122,7 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 		else{
 		    ERR_print_errors_fp(stderr);
 		    return -1;
-		}
+		}*/
 	}
 	else if(!iResult){
 		return -2;

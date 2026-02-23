@@ -5,12 +5,10 @@
 #include "../Includes/fileshit.h"
 
 
-
 int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 
 	int sd= SSL_get_fd(ssl);
 	size_t send_total = 0;
-	int iResult=0;
 	while (send_total < len) {
 	struct timeval tv;
 	tv.tv_sec=times[0];
@@ -18,44 +16,35 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 	fd_set wrfds;
 	FD_ZERO(&wrfds);
 	FD_SET(sd, &wrfds);
-	iResult=select(sd + 1, (fd_set*)0, &wrfds, (fd_set*)0, &tv);
+	int iResult=select(sd + 1, (fd_set*)0, &wrfds, (fd_set*)0, &tv);
 	if(iResult>0){
-		return  SSL_write(ssl, buf + send_total, len - send_total);
-	        //int ret = SSL_write(ssl, buf + send_total, len - send_total);
-	        /*if (ret > 0) {
+		int ret = SSL_write(ssl, buf + send_total, len - send_total);
+	        if (ret > 0) {
 	            send_total += ret;
 	            continue;
 	        }
-			else if (ret == 0) {
-				return send_total;
-			}
-	        int ssl_err = SSL_get_error(ssl, ret);
-		if (ssl_err == SSL_ERROR_WANT_READ) {
-			fd_set rfds;
-			FD_ZERO(&rfds);
-			FD_SET(sd, &rfds);
-			select(sd + 1, &rfds, (fd_set*)0, (fd_set*)0, &tv);
-			if(logging){
-
-				fprintf(logstream, "Waiting\n%s\n",strerror(errno));
-			}
+		
+		else if (ret == 0) {
+			return send_total;
+		}
+		int ssl_err = SSL_get_error(ssl, ret);
+		if (ssl_err == SSL_ERROR_WANT_WRITE) {
+			struct timeval mtv;
+			mtv.tv_sec=times[0];
+			mtv.tv_usec=times[1];
+			fd_set mwfds;
+			FD_ZERO(&mwfds);
+			FD_SET(sd, &mwfds);
+			select(sd + 1, (fd_set*)0, &mwfds, (fd_set*)0, &mtv);
 			continue;
 		}
-		else if (ssl_err == SSL_ERROR_WANT_WRITE) {
-			fd_set wfds;
-			FD_ZERO(&wfds);
-			FD_SET(sd, &wfds);
-			select(sd + 1, (fd_set*)0, &wfds, (fd_set*)0, &tv);
-			if(logging){
-
-				fprintf(logstream, "Waiting\n%s\n",strerror(errno));
-			}
-			continue;
+		else if (ssl_err == SSL_ERROR_ZERO_RETURN) {
+			return send_total;
 		}
 		else{
 		    ERR_print_errors_fp(stderr);
 		    return -1;
-		}*/
+		}
 	}
 	else if(!iResult){
 		return -2;
@@ -77,7 +66,6 @@ return send_total;
 int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 	int sd= SSL_get_fd(ssl);
 	size_t read_total = 0;
-	int iResult=0;
 	while (read_total < len) {
 	struct timeval tv;
 	tv.tv_sec=times[0];
@@ -85,11 +73,10 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 	fd_set rfds;
 	FD_ZERO(&rfds);
 	FD_SET(sd, &rfds);
-	iResult=select(sd + 1, &rfds, (fd_set*)0, (fd_set*)0, &tv);
+	int iResult=select(sd + 1, &rfds, (fd_set*)0, (fd_set*)0, &tv);
 	if(iResult>0){
-		return SSL_read(ssl, buf + read_total, len - read_total);
-		//int ret = SSL_read(ssl, buf + read_total, len - read_total);
-		/*if (ret > 0) {
+		int ret = SSL_read(ssl, buf + read_total, len - read_total);
+		if (ret > 0) {
 			read_total += ret;
 			continue;
 		}
@@ -98,31 +85,32 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 		}
 		int ssl_err = SSL_get_error(ssl, ret);
 		if (ssl_err == SSL_ERROR_WANT_READ) {
-			fd_set rfds;
-			FD_ZERO(&rfds);
-			FD_SET(sd, &rfds);
-			select(sd + 1, &rfds, (fd_set*)0, (fd_set*)0, &tv);
-			if(logging){
-
-				fprintf(logstream, "Waiting\n%s\n",strerror(errno));
-			}
+			struct timeval mtv;
+			mtv.tv_sec=times[0];
+			mtv.tv_usec=times[1];
+			fd_set mrfds;
+			FD_ZERO(&mrfds);
+			FD_SET(sd, &mrfds);
+			select(sd + 1, &mrfds, (fd_set*)0, (fd_set*)0, &mtv);
 			continue;
 		}
 		else if (ssl_err == SSL_ERROR_WANT_WRITE) {
+			struct timeval mtv;
+			mtv.tv_sec=times[0];
+			mtv.tv_usec=times[1];
 			fd_set wfds;
 			FD_ZERO(&wfds);
 			FD_SET(sd, &wfds);
-			select(sd + 1, (fd_set*)0, &wfds, (fd_set*)0, &tv);
-			if(logging){
-
-				fprintf(logstream, "Waiting\n%s\n",strerror(errno));
-			}
+			select(sd + 1, (fd_set*)0, &wfds, (fd_set*)0, &mtv);
 			continue;
+		}
+		else if (ssl_err == SSL_ERROR_ZERO_RETURN) {
+			return read_total;
 		}
 		else{
 		    ERR_print_errors_fp(stderr);
 		    return -1;
-		}*/
+		}
 	}
 	else if(!iResult){
 		return -2;
@@ -139,7 +127,6 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 return read_total;
 
 }
-
 
 int sendsome(int sd,char buff[],u_int64_t size,int_pair times){
                 int iResult;
@@ -301,138 +288,5 @@ int readsome(int fd,char buff[],u_int64_t size,int_pair times){
 		}
 		return -1;
 		}
-}
-
-
-int sendall(int sock,char buff[],int size,int_pair times){
-        int64_t len=0;
-	int64_t total=0;
-	for(len=sendsome(sock,buff+total,size-total,times);(len>0)&&(total!=size);total+=len){
-	
-			len=sendsome(sock,buff+total,size-total,times);
-	}
-	
-	if(!(total-size)){
-		if(logging){
-		fprintf(logstream,"sendall bem sucedido!! A socket e %d\n",sock);
-		
-		}
-	}
-	else if(errno==EPIPE){
-
-		if(logging){
-		fprintf(logstream,"Pipe partido!!! A socket e %d\n",sock);
-		}
-		return -2;
-	}
-	else if(errno==ENOTCONN){
-		if(logging){
-		fprintf(logstream,"sendall saiu com erro!!!!!:\nAvisando server para desconectar!\n%s\n",strerror(errno));
-		}
-		
-		return -2;
-	}
-	else if(len!=-2){
-		if(logging){
-		fprintf(logstream,"sendall saiu com erro!!!!!:\n%s\n",strerror(errno));
-		}
-	}
-	
-        return total;
-
-}
-
-int readall(int sock,char buff[],int size,int_pair times){
-        int64_t len=0;
-	int64_t total=0;
-	for(len=readsome(sock,buff+total,size-total,times);(len>0)&&(total!=size);total+=len){
-	
-			len=readsome(sock,buff+total,size-total,times);
-	}
-	
-	if(!(total-size)){
-		if(logging){
-		fprintf(logstream,"readall bem sucedido!! A socket e %d\n",sock);
-		
-		}
-	}
-	else if(errno==EPIPE){
-
-		if(logging){
-		fprintf(logstream,"Pipe partido!!! A socket e %d\n",sock);
-		}
-		return -2;
-	}
-	else if(errno==ENOTCONN){
-		if(logging){
-		fprintf(logstream,"readall saiu com erro!!!!!:\nAvisando server para desconectar!\n%s\n",strerror(errno));
-		}
-		
-		return -2;
-	}
-	else if(len!=-2){
-		if(logging){
-		fprintf(logstream,"readall saiu com erro!!!!!:\n%s\n",strerror(errno));
-		}
-	}
-	
-        return total;
-
-}
-
-int readalltofd(int sock,int fd,int size,int_pair times){
-        int32_t len=1;
-	int32_t written=1;
-	int32_t total=0;
-	char buff[DEF_DATASIZE];
-	memset(buff,0,DEF_DATASIZE);
-	for(;(len==-2||len>0)&&(total!=size);){
-                len=readsome(sock,buff,DEF_DATASIZE,times);
-                written=write(fd,buff,len);
-                total+= (written<0)? 0:written;
-                memset(buff,0,DEF_DATASIZE);
-        }
-
-	if(!(total-size)){
-		if(logging){
-		fprintf(logstream,"readall bem sucedido!! A socket e %d\n",sock);
-
-		}
-	}
-	if(len<0){
-	if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        	if(logging){
-		fprintf(logstream,"readall bem sucedido!! A socket e %d\n",sock);
-		}
-	}
-	else if(errno==EPIPE){
-
-		if(logging){
-		fprintf(logstream,"Pipe partido!!! A socket e %d\n",sock);
-		}
-		return -2;
-	}
-	else if(errno==ENOTCONN){
-		if(logging){
-		fprintf(logstream,"readall saiu com erro!!!!!:\nAvisando server para desconectar!\n%s\n",strerror(errno));
-		}
-		
-		return -2;
-	}
-	else if(len!=-2){
-		if(logging){
-		fprintf(logstream,"readall saiu com erro!!!!!:\n%s\n",strerror(errno));
-		}
-	}
-	
-	}
-	if(logging){
-		fprintf(logstream,"readalltofd bem sucedido. A socket e %d\nLemos %d de %d bytes\n",sock,total,size);
-
-	}
-	memset(buff,0,DEF_DATASIZE);
-	
-        return 0;
-
 }
 

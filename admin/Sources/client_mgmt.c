@@ -1,6 +1,7 @@
 #include "../../xtrafun/Includes/preprocessor.h"
 #include "../../xtrafun/Includes/openssl_stuff.h"
 #include "../../xtrafun/Includes/fileshit.h"
+#include "../Includes/admin_pty_setting.h"
 #include "../Includes/client_mgmt.h"
 
 int master_fd=-1;
@@ -49,12 +50,12 @@ static void* writeOutput(void* args){
 		if(numread<=0){
 			break;
 		}
-		numsent=sendsome_ssl(server_ssl,outbuff,numread,srv_data_pair);
+		numsent=will_use_tls?sendsome_ssl(server_ssl,outbuff,DEF_DATASIZE,srv_data_pair):sendsome(client_socket,outbuff,DEF_DATASIZE,srv_data_pair);
 		if(numsent<0){
 	               if((numsent==-2)||!numsent){
                                 continue;
                         }
-                        else if(numread){
+                        else if(numsent){
                         	perror("Error or interruption in output sending! Exiting...\n");
 			        break;
 			}
@@ -82,7 +83,7 @@ static void* command_prompt_thread(void* args){
 	int numread=0;
 	int numwritten=0;
 	while(cmd_alive&&all_alive){
-	numread=readsome_ssl(server_ssl,raw_line,DEF_DATASIZE,srv_data_pair);
+	numread=will_use_tls?readsome_ssl(server_ssl,raw_line,DEF_DATASIZE,srv_data_pair):recvsome(client_socket,raw_line,DEF_DATASIZE,srv_data_pair);
 	if(numread<0){
 		break;
 	}
@@ -145,8 +146,10 @@ static void cleanup_crew_client(void){
 		pthread_join(outputWritter,NULL);
 		printf("reaped server output writter thread!!\n");
 	}
-	ShutdownSSL(&server_ssl);
-	end_openssl_libs_server_side();
+	if(will_use_tls){
+		ShutdownSSL(&server_ssl);
+		end_openssl_libs_server_side();
+	}
 	close(master_fd);
 	close(client_socket);
 	printf("Finished cleanup in server.\n");
@@ -154,15 +157,17 @@ static void cleanup_crew_client(void){
 }
 
 void do_connection(char* shell_name){
-
-	init_openssl_libs_server_side();
-	convert_server_con_to_ssl(&server_ssl,client_socket,srv_con_pair);
+	setNonBlocking(&client_socket);
+	if(will_use_tls){
+		init_openssl_libs_server_side();
+		convert_server_con_to_ssl(&server_ssl,client_socket,srv_con_pair);
+	}
 	printf("Shell name: %s\n",shell_name);
 
 	char* ptrs[3];
 	char pty_name[128]={0};
 	openpty(&master_fd,&slave_fd,pty_name,NULL,NULL);
-	
+	set_pty_size(master_fd);
 	printf("Pty name: %s\n",pty_name);
 	long flags= 0;
 	flags=fcntl(master_fd,F_GETFL);
@@ -189,6 +194,7 @@ void do_connection(char* shell_name){
 			ptrs[2]=NULL;
 			login_tty(slave_fd);
 			execvp(ptrs[0], ptrs);
+			perror("Could not start shell in admin sub process!\n");
 			exit(-1);
 		default:
 			printf("We just spawned shell process of pid number %d!!!!!\n",pid_shell);

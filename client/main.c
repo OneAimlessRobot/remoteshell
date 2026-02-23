@@ -4,15 +4,13 @@
 #include "../xtrafun/Includes/fileshit.h"
 
 #define TERMBUFFSIZE 1024
-
 #define TERMIOS_BUFFER_THRESHOLD_BYTES 0
 #define TERMIOS_INPUT_DELAY_TENTHS 0
-
 
 static struct termios orig;
 static struct sigaction sa_client_shell;
 
-static void enable_raw() {
+static void enable_raw(void) {
 
     struct termios raw;
 
@@ -26,13 +24,13 @@ static void enable_raw() {
 
     // Input modes: no break, CR to NL, no parity check, no strip char,
     // no start/stop output control.
-    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    raw.c_iflag &= (~(BRKINT | ICRNL | INPCK | ISTRIP | IXON));
 
     // Output modes: disable post processing
     raw.c_oflag &= ~(OPOST);
 
     // Control modes: set 8-bit chars
-    raw.c_cflag |= (CS8);
+    //raw.c_cflag |= (CS8);
 
     // Local modes: echoing off, canonical off, no extended functions,
     // no signal chars (Ctrl-C, Ctrl-Z, etc.)
@@ -48,7 +46,7 @@ static void enable_raw() {
     }
 }
 
-static void disable_raw() {
+static void disable_raw(void) {
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
 }
 
@@ -173,8 +171,10 @@ void cleanup_crew(void){
 	close(client_socket);
 	clear_screen_with_printf();
 	disable_raw();
-	ShutdownSSL(&client_ssl);
-	end_openssl_libs_client_side();
+	if(will_use_tls){
+		ShutdownSSL(&client_ssl);
+		end_openssl_libs_client_side();
+	}
 	mtx_protected_print("Finished cleanup in client.\n");
 }
 
@@ -193,11 +193,10 @@ static void* getOutput(void* args){
 	pthread_cond_signal(&cmdCond);
 	int numread=-1;
 	while(out_alive&&all_alive){
-		while ((numread=readsome_ssl(client_ssl, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair)) >=0) {
+		while ((numread=(will_use_tls?readsome_ssl(client_ssl, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair):recvsome(client_socket, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair))) >=0) {
 		        writesome(STDOUT_FILENO, outbuff, numread,clnt_data_pair);
-	 		memset(outbuff,0,min(TERMBUFFSIZE,sizeof(outbuff)));
+			memset(outbuff,0,min(TERMBUFFSIZE,sizeof(outbuff)));
 		}
-
 	}
 	out_alive=0;
 	cleanup();
@@ -213,16 +212,17 @@ static void* command_line_thread(void* args){
 
 	}
 	pthread_mutex_unlock(&cmdMtx);;
-	printf("Client's command sending channel thread alive!\n");
+	mtx_protected_print("Client's command sending channel thread alive!\n");
 	enable_raw();
 	int numread=0;
 	int numsent=0;
+	int will_loop=1;
 	memset(raw_line,0,DEF_DATASIZE);
-	while(cmd_alive&&all_alive){
+	while(will_loop&&cmd_alive&&all_alive){
 		memset(raw_line,0,DEF_DATASIZE);
-		numread=readsome(0,raw_line,DEF_DATASIZE,clnt_data_pair);
+		numread=readsome(STDIN_FILENO,raw_line,DEF_DATASIZE,clnt_data_pair);
 		if(numread>0){
-			numsent=sendsome_ssl(client_ssl,raw_line,DEF_DATASIZE,clnt_data_pair);
+			numsent=will_use_tls?sendsome_ssl(client_ssl,raw_line,DEF_DATASIZE,clnt_data_pair):sendsome(client_socket,raw_line,DEF_DATASIZE,clnt_data_pair);
 			if(numsent<0){
 				break;
 			}
@@ -237,19 +237,20 @@ static void* command_line_thread(void* args){
 }
 int main(int argc, char ** argv){
 
-	if(argc!=3){
+	if(argc!=4){
 
-		mtx_protected_print("Utilizacao correta: arg1: ip de server a connectar.\narg2: porta de server\n");
+		mtx_protected_print("Utilizacao correta: arg1: ip de server a connectar.\narg2: porta de server\narg3: will use tls? (1=\"yes\", 0=\"no\"\n");
 		exit(-1);
 	}
 	logging=1;
 	logstream=stderr;
-	will_use_tls=1;
+	will_use_tls=atoi(argv[3]);
 	initClient(argv[1],atoi(argv[2]));
 	tryConnect(&client_socket);
-	init_openssl_libs_client_side();
-	convert_client_con_to_ssl(&client_ssl,client_socket,clnt_con_pair);
-	
+	if(will_use_tls){
+		init_openssl_libs_client_side();
+		convert_client_con_to_ssl(&client_ssl,client_socket,clnt_con_pair);
+	}
 	pthread_create(&outputPrinter,NULL,getOutput,NULL);
 	pthread_setname_np(outputPrinter,"outputPrinter_remote_shell_client");
 

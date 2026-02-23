@@ -112,7 +112,7 @@ void setNonBlocking(int*socket) {
         return;
     }
 
-    if (fcntl(*socket, F_SETFL, flags | O_NONBLOCK) == -1) {
+    if (fcntl(*socket, F_SETFL, flags | O_NONBLOCK| O_NDELAY) == -1) {
         fprintf(stderr,"erro a atribuir flags a uma socket de cliente: %s\n",strerror(errno));
     }
 }

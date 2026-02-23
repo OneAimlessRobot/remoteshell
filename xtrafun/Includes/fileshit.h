@@ -39,6 +39,8 @@ extern u_int8_t will_use_tls;
 extern SSL* client_ssl,
 		*server_ssl;
 
+extern  BIO* client_bio,
+		*server_bio;
 
 extern SSL_CTX* global_ctx;
 

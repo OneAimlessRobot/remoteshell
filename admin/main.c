@@ -116,7 +116,7 @@ int main(int argc, char ** argv){
 
 	height_for_pty=atoi(argv[5])>0?atoi(argv[5]):DEFAULT_TERM_HEIGHT;
 	printf("setting the height of every spawned pty to: %u\n",height_for_pty);
-	width_for_pty=atoi(argv[5])>0?atoi(argv[5]):DEFAULT_TERM_WIDTH;
+	width_for_pty=atoi(argv[6])>0?atoi(argv[6]):DEFAULT_TERM_WIDTH;
 	printf("setting the width of every spawned pty to: %u\n",width_for_pty);
 	logstream=stderr;
 	logging=1;

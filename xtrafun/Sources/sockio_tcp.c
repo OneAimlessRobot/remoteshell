@@ -55,6 +55,7 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 
 	        	fprintf(logstream, "SELECT ERROR!!!!! SSL SEND\n%s\n",strerror(errno));
 		}
+		exit_emergency_func();
 		return -1;
 	}
 
@@ -122,6 +123,7 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 
 	        	fprintf(logstream, "SELECT ERROR!!!!! SSL READ\n%s\n",strerror(errno));
 		}
+		exit_emergency_func();
 		return -1;
 	}
 

@@ -43,6 +43,7 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 		}
 		else{
 		    ERR_print_errors_fp(stderr);
+		    exit_emergency_func();
 		    return -1;
 		}
 	}
@@ -109,6 +110,7 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 		}
 		else{
 		    ERR_print_errors_fp(stderr);
+		    exit_emergency_func();
 		    return -1;
 		}
 	}
@@ -149,6 +151,7 @@ int sendsome(int sd,char buff[],u_int64_t size,int_pair times){
 
 		fprintf(logstream, "SELECT ERROR!!!!! SEND\n%s\n",strerror(errno));
 		}
+		exit_emergency_func();
 		return -1;
 		}
 }
@@ -173,70 +176,10 @@ int writesome(int fd,char buff[],u_int64_t size,int_pair times){
 
 		fprintf(logstream, "SELECT ERROR!!!!! SEND\n%s\n",strerror(errno));
 		}
+		exit_emergency_func();
 		return -1;
 		}
 }
-
-int sendallfd(int sock,int fd,int_pair times){
-logstream= stderr;
-
-char buff[DEF_DATASIZE];
-memset(buff,0,DEF_DATASIZE);
-int numread;
-int all_that_was_sent=0;
-int sent=0;
-while ((numread = read(fd,buff,DEF_DATASIZE)) > 0) {
-    
-        errno=0;
-	sent = sendsome(sock, buff,  numread,times);
-	memset(buff,0,DEF_DATASIZE);
-	if(sent==-2){
-		
-		if(logging){
-		fprintf(logstream,"Timeout no sending!!!!: %s\nsocket %d\n",strerror(errno),sock);
-                }
-		lseek(fd,-(numread-sent),SEEK_CUR);
-		continue;
-	}
-	if(sent<0){
-	
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                if(logging){
-		fprintf(logstream,"Block no sending!!!!: %s\nsocket %d\n",strerror(errno),sock);
-                }
-		break;
-
-        }
-	else if(errno==EPIPE){
-
-		if(logging){
-		fprintf(logstream,"Pipe partido!!! A socket e %d\n",sock);
-		}
-		raise(SIGINT);
-		return -1;
-	}
-        else if(errno == ECONNRESET){
-		if(logging){
-                fprintf(logstream,"Conexão largada!!\nSIGPIPE!!!!!: %s\n",strerror(errno));
-                }
-		raise(SIGINT);
-		return -1;
-	}
-	else {
-		if(logging){
-                fprintf(logstream,"Outro erro qualquer!!!!!: %d %s\n",errno,strerror(errno));
-                }
-		break;
-	}
-        }
-		all_that_was_sent+=sent;
-	}
-	if(logging){
-	fprintf(logstream,"send de %d bytes feito!!!!!\n",all_that_was_sent);
-	}
-	return 0;
-}
-
 
 int recvsome(int sd,char buff[],u_int64_t size,int_pair times){
 		int iResult;
@@ -260,6 +203,7 @@ int recvsome(int sd,char buff[],u_int64_t size,int_pair times){
 
 		fprintf(logstream, "SELECT ERROR!!!!! READ\n%s\n",strerror(errno));
 		}
+		exit_emergency_func();
 		return -1;
 		}
 }
@@ -286,6 +230,7 @@ int readsome(int fd,char buff[],u_int64_t size,int_pair times){
 
 		fprintf(logstream, "SELECT ERROR!!!!! READ\n%s\n",strerror(errno));
 		}
+		exit_emergency_func();
 		return -1;
 		}
 }

@@ -59,5 +59,6 @@ extern char outbuff[DEF_DATASIZE*10],
 
 extern struct sockaddr_in server_address;
 
+void exit_emergency_func(void);
 
 #endif

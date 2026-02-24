@@ -27,6 +27,12 @@ static void sigint_handler_client(int signal){
 	cmd_alive=0*signal;
 }
 
+void exit_emergency_func(void){
+
+
+	switch_all_off();
+
+}
 
 
 static void* writeOutput(void* args){

@@ -79,12 +79,18 @@ static void sigint_handler(int signal){
 	out_alive=0*signal;
 	cmd_alive=0*signal;
 }
+
 static void cleanup(void){
 
 	all_alive=0;
 	out_alive=0;
 	cmd_alive=0;
 	pthread_cond_signal(&exitCond);
+}
+
+void exit_emergency_func(void){
+
+	cleanup();
 }
 
 

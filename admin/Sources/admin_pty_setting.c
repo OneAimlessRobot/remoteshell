@@ -10,7 +10,7 @@ struct winsize the_winsize_struct={DEFAULT_TERM_HEIGHT,DEFAULT_TERM_WIDTH,0,0};
 void set_pty_size(int pty_master_fd) {
 
     the_winsize_struct.ws_row=height_for_pty;
-    the_winsize_struct.ws_row=width_for_pty;
+    the_winsize_struct.ws_col=width_for_pty;
 
     // Use ioctl to set the size on the master PTY
     if (ioctl(pty_master_fd, TIOCSWINSZ, &the_winsize_struct) == -1) {

@@ -23,12 +23,21 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 	            send_total += ret;
 	            continue;
 	        }
-		
 		else if (ret == 0) {
 			return send_total;
 		}
 		int ssl_err = SSL_get_error(ssl, ret);
-		if (ssl_err == SSL_ERROR_WANT_WRITE) {
+		if (ssl_err == SSL_ERROR_WANT_READ) {
+			struct timeval mtv;
+			mtv.tv_sec=times[0];
+			mtv.tv_usec=times[1];
+			fd_set mrfds;
+			FD_ZERO(&mrfds);
+			FD_SET(sd, &mrfds);
+			select(sd + 1, &mrfds, (fd_set*)0, (fd_set*)0, &mtv);
+			continue;
+		}
+		else if (ssl_err == SSL_ERROR_WANT_WRITE) {
 			struct timeval mtv;
 			mtv.tv_sec=times[0];
 			mtv.tv_usec=times[1];
@@ -41,9 +50,29 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 		else if (ssl_err == SSL_ERROR_ZERO_RETURN) {
 			return send_total;
 		}
+		else if(ssl_err== SSL_ERROR_SYSCALL){
+			
+		    ERR_print_errors_fp(stderr);
+		    if(logging){
+
+				fprintf(logstream, "SSL SYSCALL ERROR AT SSL SEND\n%s\n",strerror(errno));
+		    }
+		    if(errno==EAGAIN){
+
+			continue;
+		    }
+		    if(errno==EWOULDBLOCK){
+				
+			continue;	
+			}
+		}
 		else{
 		    ERR_print_errors_fp(stderr);
-		    exit_emergency_func();
+	        if(logging){
+
+				fprintf(logstream, "SSL FATAL ERROR AT SSL READ\n%s\n",strerror(errno));
+		    }
+			exit_emergency_func();
 		    return -1;
 		}
 	}
@@ -109,9 +138,29 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 		else if (ssl_err == SSL_ERROR_ZERO_RETURN) {
 			return read_total;
 		}
+		else if(ssl_err== SSL_ERROR_SYSCALL){
+			
+		    ERR_print_errors_fp(stderr);
+		    if(logging){
+
+				fprintf(logstream, "SSL SYSCALL ERROR AT SSL READ\n%s\n",strerror(errno));
+		    }
+		    if(errno==EAGAIN){
+
+			continue;
+		    }
+		    if(errno==EWOULDBLOCK){
+				
+			continue;	
+			}
+		}
 		else{
 		    ERR_print_errors_fp(stderr);
-		    exit_emergency_func();
+	        if(logging){
+
+				fprintf(logstream, "SSL FATAL ERROR AT SSL READ\n%s\n",strerror(errno));
+		    }
+		exit_emergency_func();
 		    return -1;
 		}
 	}
@@ -124,14 +173,13 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 	        	fprintf(logstream, "SELECT ERROR!!!!! SSL READ\n%s\n",strerror(errno));
 		}
 		exit_emergency_func();
-		return -1;
+	    return -1;
 	}
 
 }
 return read_total;
 
 }
-
 int sendsome(int sd,char buff[],u_int64_t size,int_pair times){
                 int iResult;
                 struct timeval tv;

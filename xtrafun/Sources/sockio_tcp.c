@@ -51,20 +51,23 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 			return send_total;
 		}
 		else if(ssl_err== SSL_ERROR_SYSCALL){
-			
 		    ERR_print_errors_fp(stderr);
 		    if(logging){
 
 				fprintf(logstream, "SSL SYSCALL ERROR AT SSL SEND\n%s\n",strerror(errno));
 		    }
+
 		    if(errno==EAGAIN){
 
 			continue;
 		    }
-		    if(errno==EWOULDBLOCK){
-				
-			continue;	
-			}
+		   if(errno == EWOULDBLOCK){
+                            continue;
+                         }
+                     if(errno == EPIPE){
+                             exit_emergency_func();
+			     return -1;
+        		}
 		}
 		else{
 		    ERR_print_errors_fp(stderr);
@@ -139,7 +142,6 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 			return read_total;
 		}
 		else if(ssl_err== SSL_ERROR_SYSCALL){
-			
 		    ERR_print_errors_fp(stderr);
 		    if(logging){
 
@@ -149,10 +151,13 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 
 			continue;
 		    }
-		    if(errno==EWOULDBLOCK){
-				
-			continue;	
-			}
+		   if(errno == EWOULDBLOCK){
+                            continue;
+                         }
+                     if(errno == EPIPE){
+                             exit_emergency_func();
+			     return -1;
+        		}
 		}
 		else{
 		    ERR_print_errors_fp(stderr);

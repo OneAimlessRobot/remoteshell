@@ -4,7 +4,6 @@
 #include "../Includes/sockio_tcp.h"
 #include "../Includes/fileshit.h"
 
-
 int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 
 	int sd= SSL_get_fd(ssl);
@@ -50,31 +49,38 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 		else if (ssl_err == SSL_ERROR_ZERO_RETURN) {
 			return send_total;
 		}
-		else if(ssl_err== SSL_ERROR_SYSCALL){
+		else if(ssl_err == SSL_ERROR_SYSCALL){
 		    ERR_print_errors_fp(stderr);
 		    if(logging){
 
 				fprintf(logstream, "SSL SYSCALL ERROR AT SSL SEND\n%s\n",strerror(errno));
 		    }
-
 		    if(errno==EAGAIN){
 
 			continue;
 		    }
-		   if(errno == EWOULDBLOCK){
-                            continue;
-                         }
-                     if(errno == EPIPE){
-                             exit_emergency_func();
-			     return -1;
-        		}
+		    if(errno == EWOULDBLOCK){
+			   continue;
+			}
+		     else{
+			exit_emergency_func();
+			    return -1;
+			}
 		}
 		else{
 		    ERR_print_errors_fp(stderr);
-	        if(logging){
+		    if(errno==EAGAIN){
 
-				fprintf(logstream, "SSL FATAL ERROR AT SSL READ\n%s\n",strerror(errno));
+			continue;
 		    }
+		    if(errno == EWOULDBLOCK){
+			   continue;
+			}
+		if(logging){
+
+			fprintf(logstream, "SSL FATAL ERROR AT SSL SEND\n%s\n",strerror(errno));
+		}
+	           
 			exit_emergency_func();
 		    return -1;
 		}
@@ -85,9 +91,9 @@ int sendsome_ssl(SSL* ssl, const char* buf, size_t len, int_pair times) {
 	else{
 		if(logging){
 
-	        	fprintf(logstream, "SELECT ERROR!!!!! SSL SEND\n%s\n",strerror(errno));
+			fprintf(logstream, "SSL FATAL ERROR AT SSL SEND\n%s\n",strerror(errno));
 		}
-		exit_emergency_func();
+			exit_emergency_func();
 		return -1;
 	}
 
@@ -141,7 +147,7 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 		else if (ssl_err == SSL_ERROR_ZERO_RETURN) {
 			return read_total;
 		}
-		else if(ssl_err== SSL_ERROR_SYSCALL){
+		else if(ssl_err == SSL_ERROR_SYSCALL){
 		    ERR_print_errors_fp(stderr);
 		    if(logging){
 
@@ -151,21 +157,28 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 
 			continue;
 		    }
-		   if(errno == EWOULDBLOCK){
-                            continue;
-                         }
-                     if(errno == EPIPE){
-                             exit_emergency_func();
-			     return -1;
-        		}
-		}
+		    if(errno == EWOULDBLOCK){
+			   continue;
+			}
+		    else{
+			exit_emergency_func();
+			    return -1;
+			}
+		    }
 		else{
 		    ERR_print_errors_fp(stderr);
-	        if(logging){
+		    if(errno==EAGAIN){
+
+			continue;
+		    }
+		    if(errno == EWOULDBLOCK){
+			   continue;
+			}
+		   if(logging){
 
 				fprintf(logstream, "SSL FATAL ERROR AT SSL READ\n%s\n",strerror(errno));
 		    }
-		exit_emergency_func();
+			exit_emergency_func();
 		    return -1;
 		}
 	}
@@ -175,16 +188,17 @@ int readsome_ssl(SSL* ssl, char* buf, size_t len, int_pair times) {
 	else{
 		if(logging){
 
-	        	fprintf(logstream, "SELECT ERROR!!!!! SSL READ\n%s\n",strerror(errno));
+			fprintf(logstream, "SSL FATAL ERROR AT SSL READ\n%s\n",strerror(errno));
 		}
-		exit_emergency_func();
-	    return -1;
+			exit_emergency_func();
+	        return -1;
 	}
 
 }
 return read_total;
 
 }
+
 int sendsome(int sd,char buff[],u_int64_t size,int_pair times){
                 int iResult;
                 struct timeval tv;

@@ -199,7 +199,7 @@ static void* getOutput(void* args){
 	pthread_cond_signal(&cmdCond);
 	int numread=-1;
 	while(out_alive&&all_alive){
-		while ((numread=(will_use_tls?readsome_ssl(client_ssl, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair):recvsome(client_socket, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair))) >=0) {
+	while (((numread=(will_use_tls?readsome_ssl(client_ssl, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair):recvsome(client_socket, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair))) >=0)&&out_alive&&all_alive) {
 		        writesome(STDOUT_FILENO, outbuff, numread,clnt_data_pair);
 			memset(outbuff,0,min(TERMBUFFSIZE,sizeof(outbuff)));
 		}
@@ -230,6 +230,9 @@ static void* command_line_thread(void* args){
 		if(numread>0){
 			numsent=will_use_tls?sendsome_ssl(client_ssl,raw_line,DEF_DATASIZE,clnt_data_pair):sendsome(client_socket,raw_line,DEF_DATASIZE,clnt_data_pair);
 			if(numsent<0){
+				break;
+			}
+			if(!strncmp(raw_line,"exit",strlen("exit"))){
 				break;
 			}
 			if(raw_line[0]==3){

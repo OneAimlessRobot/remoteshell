@@ -17,6 +17,7 @@ extern socklen_t socklenvar[2];
 
 extern int_pair srv_con_pair,
 		srv_data_pair,
+		srv_data_short_pair,
 		clnt_con_pair,
 		clnt_data_pair;
 
@@ -59,6 +60,12 @@ extern char outbuff[DEF_DATASIZE*10],
 
 extern struct sockaddr_in server_address;
 
+extern const char* exit_word;
+
+extern int strlen_of_exit_word;
+
 void exit_emergency_func(void);
+
+void init_strlen_of_exit_word(void);
 
 #endif

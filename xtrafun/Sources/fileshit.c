@@ -20,6 +20,8 @@ int_pair srv_con_pair = {SERVER_TIMEOUT_CON_SEC,SERVER_TIMEOUT_CON_USEC};
 
 int_pair srv_data_pair = {SERVER_TIMEOUT_DATA_SEC,SERVER_TIMEOUT_DATA_USEC};
 
+int_pair srv_data_short_pair = {SERVER_TIMEOUT_DATA_SHORT_SEC,SERVER_TIMEOUT_DATA_SHORT_USEC};
+
 int_pair clnt_con_pair = {CLIENT_TIMEOUT_CON_SEC,CLIENT_TIMEOUT_CON_USEC};
 
 
@@ -56,3 +58,12 @@ pthread_t outputWritter;
 char outbuff[DEF_DATASIZE*10]={0};
 char raw_line[DEF_DATASIZE]={0};
 struct sockaddr_in server_address;
+
+const char* exit_word= "exit_now\n";
+
+int strlen_of_exit_word = 0;
+
+void init_strlen_of_exit_word(void){
+
+	strlen_of_exit_word = strlen(exit_word);
+}

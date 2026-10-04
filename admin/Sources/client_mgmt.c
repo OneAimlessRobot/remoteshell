@@ -52,11 +52,11 @@ static void* writeOutput(void* args){
 	memset(outbuff,0,DEF_DATASIZE);
 	while(out_alive&&all_alive){
 		memset(outbuff,0,DEF_DATASIZE);
-		numread=readsome(master_fd,outbuff,DEF_DATASIZE,srv_data_pair);
+		numread=readsome(master_fd,outbuff,DEF_DATASIZE,srv_data_short_pair);
 		if(numread<=0){
-			break;
+			continue;
 		}
-		numsent=will_use_tls?sendsome_ssl(server_ssl,outbuff,DEF_DATASIZE,srv_data_pair):sendsome(client_socket,outbuff,DEF_DATASIZE,srv_data_pair);
+		numsent=will_use_tls?sendsome_ssl(server_ssl,outbuff,DEF_DATASIZE,srv_data_short_pair):sendsome(client_socket,outbuff,DEF_DATASIZE,srv_data_short_pair);
 		if(numsent<0){
 	               if((numsent==-2)||!numsent){
                                 continue;
@@ -68,8 +68,7 @@ static void* writeOutput(void* args){
 		}
 	}
 	printf("Server's output message channel thread out!!!\n");
-        switch_all_off();
-	return args;
+        return args;
 
 
 
@@ -93,15 +92,9 @@ static void* command_prompt_thread(void* args){
 	if(numread<0){
 		break;
 	}
-	numwritten=writesome(master_fd,raw_line,strlen(raw_line),srv_data_pair);
+	numwritten=writesome(master_fd,raw_line,strlen(raw_line),srv_data_short_pair);
 	if(numwritten<0){
 		break;
-	}
-	if(!strncmp(raw_line, "exit",strlen("exit"))&&((strlen(raw_line)-1)==strlen("exit"))){
-
-		printf("The server got orders to exit!\n");
-		break;
-
 	}
 	memset(raw_line,0,sizeof(raw_line));
 	}
@@ -137,7 +130,7 @@ static void cleanup_crew_client(void){
 			break;
 		}
 	}
-	
+
 	printf("Cleanup crew called in server. Closing file descriptors and sockets\n");
 
 

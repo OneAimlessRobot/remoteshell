@@ -2,6 +2,7 @@
 #include "./Includes/client_cert_file_paths.h"
 #include "../xtrafun/Includes/openssl_stuff.h"
 #include "../xtrafun/Includes/fileshit.h"
+#include "./Includes/client_pty_setting.h"
 
 #define TERMBUFFSIZE 1024
 #define TERMIOS_BUFFER_THRESHOLD_BYTES 0
@@ -63,13 +64,6 @@ void mtx_protected_print(const char* str,...){
 	printf("%s",wbuf);
 	pthread_mutex_unlock(&ncurses_mtx);
 
-
-}
-static void send_exit_cmd_to_server(void){
-
-	char buff[sizeof(raw_line)]={0};
-	snprintf(buff,sizeof(buff)-1,"exit\n");
-	sendsome_ssl(client_ssl,buff,DEF_DATASIZE,clnt_data_pair);
 
 }
 
@@ -146,7 +140,7 @@ void tryConnect(int* socket){
 		}
 		fprintf(stderr,"Não foi possivel:\nErro normal:%s\n Erro Socket%s\nNumero socket: %d\n",strerror(errno),strerror(sockerr),*socket);
         }
-        if(!numOfTries){
+        if(!numOfTries && ( ( *socket ) < 0 )){
         	mtx_protected_print("Não foi possivel conectar. Numero limite de tentativas (%d) atingido!!!\n",MAXNUMBEROFTRIES);
         	cleanup();
         }
@@ -163,8 +157,7 @@ void cleanup_crew(void){
 
         }
         pthread_mutex_unlock(&exitMtx);
-        send_exit_cmd_to_server();
-	mtx_protected_print("Cleanup crew called in client\n");
+        mtx_protected_print("Cleanup crew called in client\n");
 	mtx_protected_print("Cleanup crew called in client. About to join threads which are online\n");
         mtx_protected_print("Reaping client cmdline thread!!\n");
 	pthread_join(commandPrompt,NULL);
@@ -185,7 +178,7 @@ void cleanup_crew(void){
 }
 
 static void* getOutput(void* args){
-	
+
 	pthread_mutex_lock(&outMtx);
         while(!out_alive&&all_alive){
 
@@ -201,11 +194,13 @@ static void* getOutput(void* args){
 	while(out_alive&&all_alive){
 	while (((numread=(will_use_tls?readsome_ssl(client_ssl, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair):recvsome(client_socket, outbuff, min(TERMBUFFSIZE,sizeof(outbuff)),clnt_data_pair))) >=0)&&out_alive&&all_alive) {
 		        writesome(STDOUT_FILENO, outbuff, numread,clnt_data_pair);
+			if(!strncmp(outbuff,exit_word,strlen_of_exit_word-1)){
+				break;
+			}
 			memset(outbuff,0,min(TERMBUFFSIZE,sizeof(outbuff)));
 		}
 	}
 	out_alive=0;
-	cleanup();
 	mtx_protected_print("Client's output printing message channel thread exiting!\n");
 	return args;
 
@@ -219,6 +214,7 @@ static void* command_line_thread(void* args){
 	}
 	pthread_mutex_unlock(&cmdMtx);;
 	mtx_protected_print("Client's command sending channel thread alive!\n");
+	mtx_protected_print("Press [ Ctrl + D ] to leave the shell!\n");
 	enable_raw();
 	int numread=0;
 	int numsent=0;
@@ -232,10 +228,7 @@ static void* command_line_thread(void* args){
 			if(numsent<0){
 				break;
 			}
-			if(!strncmp(raw_line,"exit",strlen("exit"))){
-				break;
-			}
-			if(raw_line[0]==3){
+			if(raw_line[0]==4){
 				break;
 			}
 		}
@@ -256,6 +249,7 @@ int main(int argc, char ** argv){
 	will_use_tls=atoi(argv[3]);
 	initClient(argv[1],atoi(argv[2]));
 	tryConnect(&client_socket);
+
 	if(will_use_tls){
 		init_openssl_libs_client_side();
 		convert_client_con_to_ssl(&client_ssl,client_socket,clnt_con_pair);

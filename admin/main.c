@@ -107,13 +107,13 @@ static void accept_connections(char* shell_name){
 
 }
 int main(int argc, char ** argv){
-	
+
 	if(argc!=7){
 
 		printf("arg1: address\narg2: porta do server\narg3: shell to use\narg4: will use tls? (1=\"yes\", 0=\"no\")\narg5 and 6: width and height that all users will have upon logging in\n - (defaults are %d and %d respectively according to defines in this build) - \n",DEFAULT_TERM_WIDTH,DEFAULT_TERM_HEIGHT);
 		exit(-1);
 	}
-
+	init_strlen_of_exit_word();
 	width_for_pty=atoi(argv[5])>0?atoi(argv[5]):DEFAULT_TERM_WIDTH;
 	printf("setting the width of every spawned pty to: %u\n",width_for_pty);
 	height_for_pty=atoi(argv[6])>0?atoi(argv[6]):DEFAULT_TERM_HEIGHT;

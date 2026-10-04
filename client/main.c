@@ -2,7 +2,6 @@
 #include "./Includes/client_cert_file_paths.h"
 #include "../xtrafun/Includes/openssl_stuff.h"
 #include "../xtrafun/Includes/fileshit.h"
-#include "./Includes/client_pty_setting.h"
 
 #define TERMBUFFSIZE 1024
 #define TERMIOS_BUFFER_THRESHOLD_BYTES 0
